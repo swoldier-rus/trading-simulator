@@ -19,6 +19,8 @@ import { ReplayBarComponent } from './components/replay-bar.js';
 import { ModalsComponent } from './components/modals.js';
 import { TradeLinesOverlayComponent } from './components/trade-lines-overlay.js';
 import { QuickTradeWidgetComponent } from './components/quick-trade-widget.js';
+import { FloatingDrawingToolbarComponent } from './components/floating-drawing-toolbar.js';
+import { DrawingSettingsModalComponent } from './components/drawing-settings-modal.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -39,9 +41,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const modals = new ModalsComponent(store);
   const tradeLinesOverlay = new TradeLinesOverlayComponent(store);
   const quickTradeWidget = new QuickTradeWidgetComponent(store);
+  const drawingSettingsModal = new DrawingSettingsModalComponent(store);
+  const floatingDrawingToolbar = new FloatingDrawingToolbarComponent(store);
 
   store.tradeLinesOverlay = tradeLinesOverlay;
   store.quickTradeWidget = quickTradeWidget;
+  store.drawingSettingsModal = drawingSettingsModal;
+  store.floatingDrawingToolbar = floatingDrawingToolbar;
   store.indicatorManager = new IndicatorManager(store.chart);
 
   // 3. Connect Paper Trading Account Listeners
@@ -292,6 +298,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       drawingRail.resetToCursor();
       store.set('isSelectingJumpBar', false);
       modals.closeAll();
+      if (store.drawingSettingsModal) {
+        store.drawingSettingsModal.close();
+      }
+      if (store.floatingDrawingToolbar) {
+        store.floatingDrawingToolbar.closeAllPopups();
+      }
       const datePickerModal = document.getElementById('datePickerModal');
       if (datePickerModal) datePickerModal.classList.remove('open');
       const startPointMenu = document.getElementById('startPointMenu');
@@ -319,7 +331,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       chartOrderMenu,
       bottomDock,
       replayBar,
-      modals
+      modals,
+      drawingSettingsModal,
+      floatingDrawingToolbar
     },
     loadCandles,
     prefetchSubsequentBars

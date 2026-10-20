@@ -65,6 +65,10 @@ export class DrawingRailComponent {
       this.store.drawingController.setTool(null);
       if (this.chartEl) this.chartEl.style.cursor = 'default';
     } else {
+      if (this.store.floatingDrawingToolbar) {
+        const def = this.store.floatingDrawingToolbar.getDefaultStyle(tool);
+        this.store.drawingController.setOptions({ defaultStyle: def });
+      }
       this.store.drawingController.setTool(tool);
       if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
     }

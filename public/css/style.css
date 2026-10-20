@@ -9,4 +9,5 @@
 @import url('./components/order-panel.css') layer(components);
 @import url('./components/bottom-dock.css') layer(components);
 @import url('./components/replay-bar.css') layer(components);
+@import url('./components/drawing-toolbar.css') layer(components);
 @import url('./components/modals.css') layer(components);
