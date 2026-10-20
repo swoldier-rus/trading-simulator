@@ -145,7 +145,7 @@ export class ToolbarComponent {
       this.chartTypeDropdown.style.display = this.chartTypeDropdown.style.display === 'none' ? 'block' : 'none';
     };
 
-    this.chartTypeItems = this.chartTypeDropdown.querySelectorAll('.chart-type-item');
+    this.chartTypeItems = this.chartTypeDropdown.querySelectorAll('.chart-type-item:not(.chart-type-settings-item)');
 
     this.chartTypeItems.forEach(item => {
       item.onclick = () => {
@@ -170,9 +170,24 @@ export class ToolbarComponent {
         const mainSeries = this.store.mainSeries;
         if (chart && mainSeries && typeof chart.setSeriesType === 'function') {
           chart.setSeriesType(mainSeries, type);
+          if (this.store.chartController && typeof this.store.chartController.applySavedSeriesStyle === 'function') {
+            this.store.chartController.applySavedSeriesStyle(type);
+          }
         }
       };
     });
+
+    // Chart Style Settings button
+    const btnSettings = document.getElementById('btnOpenChartTypeSettings');
+    if (btnSettings) {
+      btnSettings.onclick = (e) => {
+        e.stopPropagation();
+        this.chartTypeDropdown.style.display = 'none';
+        if (this.store.chartStyleModal) {
+          this.store.chartStyleModal.open();
+        }
+      };
+    }
 
     // Sync initial state from store if present
     const initialType = this.store.get('currentChartType') || 'candlestick';

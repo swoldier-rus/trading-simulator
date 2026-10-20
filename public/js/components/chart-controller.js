@@ -30,6 +30,21 @@ export class ChartControllerComponent {
     this.init();
   }
 
+  applySavedSeriesStyle(type) {
+    if (!this.mainSeries || typeof this.mainSeries.applyOptions !== 'function') return;
+    try {
+      const raw = localStorage.getItem('trading_simulator_chart_custom_styles');
+      if (raw) {
+        const allCustom = JSON.parse(raw);
+        if (allCustom && allCustom[type]) {
+          this.mainSeries.applyOptions(allCustom[type]);
+        }
+      }
+    } catch (e) {
+      console.warn('[ChartController] Failed to apply saved series style:', e);
+    }
+  }
+
   init() {
     if (!this.chartEl || !window.OpenAlgoCharts) return;
 
@@ -89,6 +104,7 @@ export class ChartControllerComponent {
           console.warn('[ChartController] Failed to set initial series type:', err);
         }
       }
+      this.applySavedSeriesStyle(initialChartType);
 
       // Markers layer for trade entry/exit arrows
       if (this.mainSeries && typeof this.mainSeries.createMarkers === 'function') {
