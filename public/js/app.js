@@ -139,6 +139,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentSelectedSide = 'BUY'; // 'BUY' or 'SELL'
 
+  // Bottom Trading Dock Elements
+  const bottomTabs = document.querySelectorAll('.bottom-tab');
+  const positionsView = document.getElementById('positionsView');
+  const ordersView = document.getElementById('ordersView');
+  const tradesView = document.getElementById('tradesView');
+  const analyticsView = document.getElementById('analyticsView');
+  const badgePositions = document.getElementById('badgePositions');
+  const badgeOrders = document.getElementById('badgeOrders');
+  const badgeTrades = document.getElementById('badgeTrades');
+  const btnCloseAllPositions = document.getElementById('btnCloseAllPositions');
+  const btnCancelAllOrders = document.getElementById('btnCancelAllOrders');
+  const btnExportCsv = document.getElementById('btnExportCsv');
+  const btnResetAccount = document.getElementById('btnResetAccount');
+
+  // Metrics Elements
+  const metricBalance = document.getElementById('metricBalance');
+  const metricEquity = document.getElementById('metricEquity');
+  const metricPnL = document.getElementById('metricPnL');
+  const metricWinrate = document.getElementById('metricWinrate');
+
   // Tables Bodies
   const positionsTableBody = document.getElementById('positionsTableBody');
   const ordersTableBody = document.getElementById('ordersTableBody');
