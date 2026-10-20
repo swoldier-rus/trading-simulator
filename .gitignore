@@ -1,0 +1,7 @@
+node_modules/
+scratch/
+.env
+config.json
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenAlgo Trading Simulator — Торговый симулятор на истории (Т-Инвестиции)</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top App Toolbar -->
+  <header class="tv-header">
+    <div class="tv-header-left">
+      <!-- App Badge -->
+      <div class="tv-logo-badge">
+        <div class="tv-logo-icon">OA</div>
+        <span>OpenAlgo</span>
+        <span class="tv-simulator-tag">Simulator</span>
+      </div>
+
+      <!-- Symbol Selector -->
+      <div class="symbol-selector">
+        <div class="symbol-trigger" id="symbolTrigger" title="Выбрать инструмент">
+          <span id="symbolTickerText">SBER</span>
+          <span style="font-size: 10px; color: #787b86;">▼</span>
+        </div>
+        <div class="symbol-dropdown" id="symbolDropdown">
+          <input type="text" class="symbol-search-input" id="symbolSearchInput" placeholder="Поиск инструмента MOEX (напр. SBER, GAZP)..." autocomplete="off">
+          <div class="symbol-list" id="symbolList">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <div class="tv-divider"></div>
+
+      <!-- Timeframe Buttons -->
+      <div class="timeframe-group">
+        <button class="tf-btn" data-tf="1m">1м</button>
+        <button class="tf-btn" data-tf="5m">5м</button>
+        <button class="tf-btn" data-tf="15m">15м</button>
+        <button class="tf-btn active" data-tf="1h">1ч</button>
+        <button class="tf-btn" data-tf="4h">4ч</button>
+        <button class="tf-btn" data-tf="1d">1Д</button>
+        <button class="tf-btn" data-tf="1w">1Н</button>
+      </div>
+
+      <div class="tv-divider"></div>
+
+      <!-- Chart Type Selector -->
+      <div class="chart-type-selector">
+        <button class="tv-btn" id="btnChartTypeTrigger" title="Тип графика">
+          <span id="chartTypeIcon">🕯️</span>
+          <span id="chartTypeText">Свечи</span>
+          <span style="font-size: 10px; color: #787b86;">▼</span>
+        </button>
+        <div class="chart-type-dropdown" id="chartTypeDropdown" style="display: none;">
+          <div class="chart-type-item active" data-type="candlestick">🕯️ Японские свечи</div>
+          <div class="chart-type-item" data-type="hollow-candle">🕯 Пустые свечи</div>
+          <div class="chart-type-item" data-type="bar">📊 Бары</div>
+          <div class="chart-type-item" data-type="line">📈 Линия</div>
+          <div class="chart-type-item" data-type="area">📉 Область</div>
+          <div class="chart-type-item" data-type="baseline">⚖️ Базовая линия</div>
+        </div>
+      </div>
+
+      <div class="tv-divider"></div>
+
+      <!-- Indicators Button -->
+      <button class="tv-btn" id="btnOpenIndicators" title="Технические индикаторы (OpenAlgo)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span>Индикаторы</span>
+        <span class="active-indicator-count" id="activeIndicatorCount" style="display: none;">0</span>
+      </button>
+
+      <div class="tv-divider"></div>
+
+      <!-- Replay / Historical Simulation Button with Dropdown -->
+      <div class="replay-btn-group">
+        <button class="tv-btn tv-btn-replay" id="btnToggleReplay" title="Режим симуляции / торговли на истории">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+          </svg>
+          <span id="btnReplayText">Симулятор (История)</span>
+        </button>
+        <button class="tv-btn tv-btn-replay-dropdown" id="btnToggleReplayMenu" title="Выбрать начальную точку в истории">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Center: Quick Trade Buttons -->
+    <div class="tv-header-center">
+      <button class="quick-order-btn btn-sell" id="btnQuickSell" title="Быстрая продажа (Short) по текущей исторической цене">
+        <span>Продать</span>
+        <span class="quick-price" id="quickSellPrice">—</span>
+      </button>
+      <button class="quick-order-btn btn-buy" id="btnQuickBuy" title="Быстрая покупка (Long) по текущей исторической цене">
+        <span>Купить</span>
+        <span class="quick-price" id="quickBuyPrice">—</span>
+      </button>
+    </div>
+
+    <!-- Right: Status & Settings -->
+    <div class="tv-header-right">
+      <div class="token-badge demo" id="tokenBadge" title="Источник данных">
+        <div class="token-status-dot"></div>
+        <span id="tokenStatusText">Симулятор (Демо)</span>
+      </div>
+
+      <div class="tv-divider"></div>
+
+      <button class="tv-btn" id="btnOpenSettings" title="Настройки API Т-Инвестиций и симулятора">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Настройки</span>
+      </button>
+
+      <button class="tv-btn tv-btn-icon" id="btnFullscreen" title="Полноэкранный режим">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Container -->
+  <main class="tv-workspace">
+    
+    <!-- Floating Replay Control Toolbar -->
+    <div class="floating-replay-toolbar" id="floatingReplayBar" style="display: none;">
+      <span class="replay-badge">РЕЖИМ СИМУЛЯЦИИ</span>
+
+      <!-- Jump to start point button -->
+      <button class="replay-control-btn replay-start-point-btn" id="btnReplayStartPoint" title="Выбрать начальную точку (Бар, Дата, Случайный)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="3" height="16" rx="0.5"></rect>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+          <polyline points="14 7 9 12 14 17"></polyline>
+        </svg>
+        <span style="font-size: 12px; margin-left: 4px; font-weight: 600;">Начало</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-left: 3px; opacity: 0.8;">
+          <path d="M7 10l5 5 5-5z"/>
+        </svg>
+      </button>
+
+      <!-- Step back -->
+      <button class="replay-control-btn" id="btnReplayStepBack" title="Предыдущий бар (Стрелка влево)">⏮</button>
+
+      <!-- Play / Pause -->
+      <button class="replay-control-btn replay-play-btn" id="btnReplayPlay" title="Старт / Пауза (Пробел)">▶</button>
+
+      <!-- Step forward -->
+      <button class="replay-control-btn" id="btnReplayStep" title="Следующий бар (Стрелка вправо)">⏭</button>
+
+      <!-- Speed selector -->
+      <select class="replay-speed-select" id="replaySpeedSelect" title="Скорость симуляции">
+        <option value="2000">0.5x (2.0 с)</option>
+        <option value="1000" selected>1.0x (1.0 с)</option>
+        <option value="500">2.0x (0.5 с)</option>
+        <option value="250">4.0x (0.25 с)</option>
+        <option value="100">10x (0.1 с)</option>
+      </select>
+
+      <!-- Range scrub slider -->
+      <input type="range" class="replay-slider" id="replayScrubSlider" min="0" max="100" value="70" title="Перемотка по истории">
+
+      <!-- Progress readout -->
+      <span class="replay-info-text" id="replayInfoText">0 / 0</span>
+
+      <!-- Timestamp readout -->
+      <div class="replay-time-badge" id="replayTimeBadge" title="Текущее историческое время (МСК)">
+        <span id="replayTimeText">—</span>
+      </div>
+
+      <!-- Exit replay -->
+      <button class="replay-exit-btn" id="btnExitReplay" title="Выйти из режима симуляции (восстановить полный график)">✕</button>
+    </div>
+
+    <!-- Main Middle Area (Left Toolbar + Chart) -->
+    <div class="tv-main-center">
+      <!-- Left Vertical Drawing Toolbar (OpenAlgo Drawing Tools) -->
+      <aside class="tv-left-toolbar">
+        <button class="left-tool-btn active" id="toolCursor" data-tool="cursor" title="Курсор / Перекрестие (Esc)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M18 15h8v-1h-8z"></path>
+            <path d="M14 18v8h1v-8zM14 3v8h1v-8zM3 15h8v-1h-8z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolTrendLine" data-tool="trend-line" title="Трендовая линия (T)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M7.354 21.354l14-14-.707-.707-14 14z"></path>
+            <path d="M22.5 7c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM5.5 24c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolHLine" data-tool="horizontal-line" title="Горизонтальный уровень (H)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M4 15h8.5v-1h-8.5zM16.5 15h8.5v-1h-8.5z"></path>
+            <path d="M14.5 16c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolHRay" data-tool="horizontal-ray" title="Горизонтальный луч">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M8.5 15h16.5v-1h-16.5z"></path>
+            <path d="M6.5 16c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolParallelChannel" data-tool="parallel-channel" title="Параллельный канал">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M8.354 18.354l10-10-.707-.707-10 10zM12.354 25.354l5-5-.707-.707-5 5z"></path>
+            <path d="M20.354 17.354l5-5-.707-.707-5 5z"></path>
+            <path d="M19.5 8c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM6.5 21c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM18.5 20c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolFib" data-tool="fib-retracement" title="Коррекция по Фибоначчи">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M3 5h22v-1h-22z"></path>
+            <path d="M3 17h22v-1h-22z"></path>
+            <path d="M3 11h19.5v-1h-19.5z"></path>
+            <path d="M5.5 23h19.5v-1h-19.5z"></path>
+            <path d="M3.5 24c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM24.5 12c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolLongPos" data-tool="long-position" title="Длинная позиция (Риск / Прибыль)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M5.5 20c1.2 0 2.22.86 2.45 2H25v1H7.95a2.5 2.5 0 1 1-2.45-3m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M25 18H5v-1h20zm-11-4h3v1h-4V9h1zM5.5 4c1.2 0 2.22.86 2.45 2H25v1H7.95A2.5 2.5 0 1 1 5.5 4m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolShortPos" data-tool="short-position" title="Короткая позиция (Риск / Прибыль)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M5.5 20c1.2 0 2.22.86 2.45 2H25v1H7.95a2.5 2.5 0 1 1-2.45-3m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m9.52-7q.53 0 .93.2l.2.1q.27.17.46.43l.06.1q.2.3.25.73v.02h-.82v-.01a1 1 0 0 0-.36-.55 1.2 1.2 0 0 0-.73-.2q-.22 0-.4.06l-.12.04a1 1 0 0 0-.36.3 1 1 0 0 0-.13.43v.01q0 .2.09.34t.26.25q.19.1.48.2l.76.21q.71.2 1.06.57l.08.1q.27.36.27.9v.02q0 .45-.2.81l-.07.1a2 2 0 0 1-.72.62q-.45.22-1.02.22-.42 0-.77-.1l-.22-.1a2 2 0 0 1-.7-.55 2 2 0 0 1-.3-.84v-.02h.86v.01q.1.36.39.57t.76.22q.34 0 .59-.11a1 1 0 0 0 .4-.31l.06-.1q.09-.17.08-.36a1 1 0 0 0-.1-.38l-.1-.1a1.5 1.5 0 0 0-.65-.34l-.78-.21q-.46-.13-.77-.34-.3-.21-.45-.51-.14-.3-.14-.73 0-.5.24-.88l.06-.09q.24-.32.61-.5.43-.23.96-.23M25 12H5v-1h20zM5.5 4c1.2 0 2.22.86 2.45 2H25v1H7.95A2.5 2.5 0 1 1 5.5 4m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolRectangle" data-tool="rectangle" title="Прямоугольник (Зона поддержки / сопротивления)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M7.5 6h13v-1h-13z"></path>
+            <path d="M7.5 23h13v-1h-13z"></path>
+            <path d="M5 7.5v13h1v-13z"></path>
+            <path d="M22 7.5v13h1v-13z"></path>
+            <path d="M5.5 7c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM22.5 7c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM22.5 24c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM5.5 24c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolPriceRange" data-tool="price-range" title="Ценовой диапазон / Измерение">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path fill-rule="nonzero" d="M4 5h16.5v-1h-16.5zM25 24h-16.5v1h16.5z"></path>
+            <path fill-rule="nonzero" d="M6.5 26c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zM22.5 6c.828 0 1.5-.672 1.5-1.5s-.672-1.5-1.5-1.5-1.5.672-1.5 1.5.672 1.5 1.5 1.5zm0 1c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5z"></path>
+            <path fill-rule="nonzero" d="M14 9v14h1v-14z"></path>
+            <path d="M14.5 6l2.5 3h-5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolBrush" data-tool="brush" title="Кисть">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M1.789 23l.859-.854.221-.228c.18-.19.38-.409.597-.655.619-.704 1.238-1.478 1.815-2.298.982-1.396 1.738-2.776 2.177-4.081 1.234-3.667 5.957-4.716 8.923-1.263 3.251 3.785-.037 9.38-5.379 9.38h-9.211zm9.211-1c4.544 0 7.272-4.642 4.621-7.728-2.45-2.853-6.225-2.015-7.216.931-.474 1.408-1.273 2.869-2.307 4.337-.599.852-1.241 1.653-1.882 2.383l-.068.078h6.853z"></path>
+            <path d="M18.182 6.002l-1.419 1.286c-1.031.935-1.075 2.501-.096 3.48l1.877 1.877c.976.976 2.553.954 3.513-.045l5.65-5.874-.721-.693-5.65 5.874c-.574.596-1.507.609-2.086.031l-1.877-1.877c-.574-.574-.548-1.48.061-2.032l1.419-1.286-.672-.741z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolText" data-tool="text" title="Текстовая заметка">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M8 6.5c0-.28.22-.5.5-.5H14v16h-2v1h5v-1h-2V6h5.5c.28 0 .5.22.5.5V9h1V6.5c0-.83-.67-1.5-1.5-1.5h-12C7.67 5 7 5.67 7 6.5V9h1V6.5Z"></path>
+          </svg>
+        </button>
+        <div class="left-tool-divider"></div>
+        <button class="left-tool-btn" id="toolMagnet" title="Магнит (привязка к ценам OHLC)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path fill-rule="nonzero" d="M14 10a2 2 0 0 0-2 2v11H6V12c0-4.416 3.584-8 8-8s8 3.584 8 8v11h-6V12a2 2 0 0 0-2-2zm-3 2a3 3 0 0 1 6 0v10h4V12c0-3.864-3.136-7-7-7s-7 3.136-7 7v10h4V12z"></path>
+            <path d="M6.5 18h5v1h-5zm10 0h5v1h-5z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn" id="toolClearDrawings" title="Очистить все графические построения">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M18 7h5v1h-2.01l-1.33 14.64a1.5 1.5 0 0 1-1.5 1.36H9.84a1.5 1.5 0 0 1-1.49-1.36L7.01 8H5V7h5V6c0-1.1.9-2 2-2h4a2 2 0 0 1 2 2v1Zm-6-2a1 1 0 0 0-1 1v1h6V6a1 1 0 0 0-1-1h-4ZM8.02 8l1.32 14.54a.5.5 0 0 0 .5.46h8.33a.5.5 0 0 0 .5-.46L19.99 8H8.02Z"></path>
+          </svg>
+        </button>
+      </aside>
+
+      <!-- Chart Pane -->
+      <div class="chart-container">
+        <div id="chart"></div>
+
+        <!-- Chart Legend -->
+        <div class="chart-legend">
+          <div class="legend-title">
+            <span class="legend-symbol" id="legendSymbol">SBER</span>
+            <span class="legend-tf" id="legendTF">1ч</span>
+            <span class="legend-currency" id="legendCurrency">RUB</span>
+          </div>
+          <div class="legend-values">
+            <div class="legend-val-item"><span>О:</span><span id="valOpen">—</span></div>
+            <div class="legend-val-item"><span>В:</span><span id="valHigh">—</span></div>
+            <div class="legend-val-item"><span>Н:</span><span id="valLow">—</span></div>
+            <div class="legend-val-item"><span>З:</span><span id="valClose">—</span></div>
+            <div class="legend-val-item"><span id="valChange">—</span></div>
+            <div class="legend-val-item"><span>Объем:</span><span id="valVolume">—</span></div>
+          </div>
+        </div>
+
+        <!-- TradingView-style Price Axis Plus Button -->
+        <button id="priceAxisPlusBtn" class="price-axis-plus-btn" title="Выставить заявку по этой цене" style="display: none;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+
+        <!-- On-Chart Order Context Menu -->
+        <div id="chartOrderMenu" class="chart-order-menu" style="display: none;">
+          <!-- Header with Quantity Selector -->
+          <div class="chart-order-menu-header">
+            <div class="chart-order-qty-label">Размер заявки:</div>
+            <div class="chart-order-qty-control">
+              <button type="button" class="order-qty-btn" id="btnMenuQtyDec" title="-1 лот">−</button>
+              <input type="number" id="inputMenuLots" class="order-qty-input" value="1" min="1" max="10000">
+              <button type="button" class="order-qty-btn" id="btnMenuQtyInc" title="+1 лот">+</button>
+              <span class="order-qty-suffix" id="menuLotSuffix">лот.</span>
+            </div>
+          </div>
+
+          <!-- Quick Lot Chips -->
+          <div class="chart-order-chips">
+            <button type="button" class="order-chip active" data-lots="1">1</button>
+            <button type="button" class="order-chip" data-lots="5">5</button>
+            <button type="button" class="order-chip" data-lots="10">10</button>
+            <button type="button" class="order-chip" data-lots="30">30</button>
+            <button type="button" class="order-chip" data-lots="50">50</button>
+            <button type="button" class="order-chip" data-lots="100">100</button>
+          </div>
+
+          <div class="chart-order-menu-info" id="menuSharesInfo">
+            10 шт. • 2 805,00 ₽
+          </div>
+
+          <div class="chart-order-menu-divider"></div>
+
+          <!-- Action Rows (matching user's screenshot) -->
+          <div class="chart-order-menu-actions">
+            <button type="button" class="chart-order-action-btn" id="btnMenuActionPrimary">
+              <span class="action-icon sell" id="menuIconPrimary">∨</span>
+              <span class="action-text" id="menuTextPrimary">Продать SBER Лимит 1 @ 280,50</span>
+            </button>
+            <button type="button" class="chart-order-action-btn" id="btnMenuActionSecondary">
+              <span class="action-icon buy" id="menuIconSecondary">∧</span>
+              <span class="action-text" id="menuTextSecondary">Купить SBER Стоп 1 @ 280,50</span>
+            </button>
+            <button type="button" class="chart-order-action-btn secondary" id="btnMenuActionCustom">
+              <span class="action-icon">➕</span>
+              <span class="action-text" id="menuTextCustom">Заявка со Stop Loss / Take Profit...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Trading Panel (OpenAlgo Dock) -->
+    <section class="tv-bottom-panel">
+      <!-- Panel Header with Tabs and Metrics -->
+      <div class="bottom-panel-header">
+        <div class="bottom-tabs">
+          <button class="bottom-tab active" data-tab="positions">
+            <span>Позиции</span>
+            <span class="dock-tab-badge" id="badgePositions">0</span>
+          </button>
+          <button class="bottom-tab" data-tab="orders">
+            <span>Заявки</span>
+            <span class="dock-tab-badge" id="badgeOrders">0</span>
+          </button>
+          <button class="bottom-tab" data-tab="trades">
+            <span>История сделок</span>
+            <span class="dock-tab-badge" id="badgeTrades">0</span>
+          </button>
+          <button class="bottom-tab" data-tab="analytics">
+            <span>Статистика</span>
+          </button>
+        </div>
+
+        <div class="account-metrics">
+          <div class="metric-item">
+            <span class="metric-label">Баланс:</span>
+            <span class="metric-value" id="metricBalance">100 000.00 ₽</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Эквити:</span>
+            <span class="metric-value" id="metricEquity">100 000.00 ₽</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Нереализ. PnL:</span>
+            <span class="metric-value positive" id="metricPnL">+0.00 ₽</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Винрейт:</span>
+            <span class="metric-value" id="metricWinrate">0% (0)</span>
+          </div>
+          <div class="metric-actions">
+            <button class="metric-btn-action" id="btnCloseAllPositions" title="Закрыть все открытые позиции по текущей цене">Закрыть все</button>
+            <button class="metric-btn-action" id="btnCancelAllOrders" title="Отменить все выставленные лимитные/стоп заявки">Отменить заявки</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Content -->
+      <div class="bottom-panel-content">
+        <!-- Order Entry sidebar -->
+        <div class="order-entry-sidebar">
+          <div class="order-type-tabs">
+            <button class="order-type-btn active" data-order-type="MARKET">Рыночная</button>
+            <button class="order-type-btn" data-order-type="LIMIT">Лимитная</button>
+            <button class="order-type-btn" data-order-type="STOP">Стоп</button>
+          </div>
+
+          <div class="form-row" id="rowLimitPrice" style="display: none;">
+            <span class="form-label">Цена заявки (₽):</span>
+            <input type="number" class="form-input" id="inputLimitPrice" placeholder="Цена входа" step="0.05">
+          </div>
+
+          <div class="form-row">
+            <span class="form-label">Лоты:</span>
+            <div class="lots-input-group">
+              <input type="number" class="form-input" id="inputLots" value="1" min="1" step="1">
+              <span class="lots-info-text" id="lotsInfoText">10 шт.</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <span class="form-label">Stop Loss:</span>
+            <input type="number" class="form-input" id="inputSL" placeholder="Опционально" step="0.05">
+          </div>
+
+          <div class="form-row">
+            <span class="form-label">Take Profit:</span>
+            <input type="number" class="form-input" id="inputTP" placeholder="Опционально" step="0.05">
+          </div>
+
+          <!-- Risk / Reward Real-time Calculation -->
+          <div class="risk-reward-box" id="riskRewardBox">
+            <div class="rr-row"><span>Объем сделки:</span><strong id="rrNotional">— ₽</strong></div>
+            <div class="rr-row"><span>Риск (SL):</span><strong class="text-negative" id="rrRisk">— ₽</strong></div>
+            <div class="rr-row"><span>Прибыль (TP):</span><strong class="text-positive" id="rrReward">— ₽</strong></div>
+            <div class="rr-row"><span>Соотношение R:R:</span><strong id="rrRatio">—</strong></div>
+          </div>
+
+          <div class="trade-actions-row">
+            <button class="btn-trade-buy" id="btnPanelBuy">Купить (Long)</button>
+            <button class="btn-trade-sell" id="btnPanelSell">Продать (Short)</button>
+          </div>
+        </div>
+
+        <!-- Tables View -->
+        <div class="data-table-container">
+          <!-- Positions Table -->
+          <div id="positionsView">
+            <table class="tv-table">
+              <thead>
+                <tr>
+                  <th>Инструмент</th>
+                  <th>Сторона</th>
+                  <th>Лоты</th>
+                  <th>Штук</th>
+                  <th>Цена входа</th>
+                  <th>Текущая цена</th>
+                  <th>Stop Loss</th>
+                  <th>Take Profit</th>
+                  <th>Нереализ. PnL (₽)</th>
+                  <th>Доход %</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody id="positionsTableBody">
+                <tr class="empty-row"><td colspan="11">Нет открытых позиций</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Orders Table -->
+          <div id="ordersView" style="display: none;">
+            <table class="tv-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Инструмент</th>
+                  <th>Тип</th>
+                  <th>Сторона</th>
+                  <th>Лоты</th>
+                  <th>Цена заявки</th>
+                  <th>SL / TP</th>
+                  <th>Время</th>
+                  <th>Действие</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTableBody">
+                <tr class="empty-row"><td colspan="9">Нет активных заявок</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Trade History Table -->
+          <div id="tradesView" style="display: none;">
+            <div style="padding: 6px 12px; display: flex; justify-content: flex-end; border-bottom: 1px solid var(--tv-border);">
+              <button class="btn-secondary" id="btnExportCsv" style="font-size: 11px; padding: 4px 10px;">💾 Экспорт в CSV</button>
+            </div>
+            <table class="tv-table">
+              <thead>
+                <tr>
+                  <th>Инструмент</th>
+                  <th>Сторона</th>
+                  <th>Лоты</th>
+                  <th>Вход</th>
+                  <th>Выход</th>
+                  <th>PnL (₽)</th>
+                  <th>Доход %</th>
+                  <th>Причина</th>
+                  <th>Комиссия</th>
+                  <th>Время входа</th>
+                  <th>Время выхода</th>
+                </tr>
+              </thead>
+              <tbody id="tradesTableBody">
+                <tr class="empty-row"><td colspan="11">История сделок пуста</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Analytics & Statistics View -->
+          <div id="analyticsView" style="display: none;">
+            <div class="analytics-grid">
+              <div class="analytics-card">
+                <div class="card-title">Всего сделок</div>
+                <div class="card-val" id="statTotalTrades">0</div>
+                <div class="card-sub" id="statWinLossRatio">0 прибыльных / 0 убыточных</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Винрейт (Win Rate)</div>
+                <div class="card-val" id="statWinRate">0.0%</div>
+                <div class="card-sub">Процент успешных трейдов</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Профит-фактор</div>
+                <div class="card-val" id="statProfitFactor">0.00</div>
+                <div class="card-sub" id="statGrossProfitLoss">Прибыль: 0 ₽ / Убыток: 0 ₽</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Макс. просадка (Drawdown)</div>
+                <div class="card-val text-negative" id="statMaxDD">0.00 ₽ (0.0%)</div>
+                <div class="card-sub">Максимальное падение от пика</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Средняя прибыль</div>
+                <div class="card-val text-positive" id="statAvgWin">0.00 ₽</div>
+                <div class="card-sub">На одну прибыльную сделку</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Средний убыток</div>
+                <div class="card-val text-negative" id="statAvgLoss">0.00 ₽</div>
+                <div class="card-sub">На одну убыточную сделку</div>
+              </div>
+              <div class="analytics-card">
+                <div class="card-title">Общая доходность счета</div>
+                <div class="card-val" id="statReturnPct">0.00%</div>
+                <div class="card-sub" id="statInitialCapital">Стартовый капитал: 100 000 ₽</div>
+              </div>
+              <div class="analytics-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;">
+                <button class="btn-secondary" id="btnResetAccount" style="color: #f23645; border-color: rgba(242, 54, 69, 0.4); font-weight: 600;">
+                  🔄 Сбросить симуляцию (Reset)
+                </button>
+                <div style="font-size: 11px; color: var(--tv-text-muted);">Начать симуляцию с чистого листа</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal Dialog -->
+  <div class="tv-modal-backdrop" id="settingsModal">
+    <div class="tv-modal">
+      <div class="tv-modal-header">
+        <div class="tv-modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Настройки симулятора и API Т-Инвестиций</span>
+        </div>
+        <button class="tv-modal-close" id="btnCloseSettings">&times;</button>
+      </div>
+
+      <div class="tv-modal-body">
+        <!-- Token Input -->
+        <div class="setting-group">
+          <label class="setting-label">API Токен Т-Инвестиций (T-Bank Invest API v2)</label>
+          <div class="setting-input-wrapper">
+            <input type="password" class="setting-input" id="inputTinkoffToken" placeholder="t.xxxxxxxxxxxxxxxxxxxx">
+            <button class="btn-secondary" id="btnTestToken" type="button">Проверить</button>
+          </div>
+          <div class="setting-desc">
+            Получите токен в личном кабинете Т-Банка: <em>Настройки → Токены T-Invest API → Выпустить токен для чтения</em>.
+          </div>
+          <div id="tokenTestResult" style="font-size: 12px; margin-top: 4px; display: none;"></div>
+        </div>
+
+        <!-- Initial Balance -->
+        <div class="setting-group">
+          <label class="setting-label">Стартовый баланс симулятора (₽)</label>
+          <input type="number" class="setting-input" id="inputInitialBalance" value="100000" min="1000" step="1000">
+        </div>
+
+        <!-- Commission -->
+        <div class="setting-group">
+          <label class="setting-label">Комиссия брокера (%)</label>
+          <input type="number" class="setting-input" id="inputCommission" value="0.05" min="0" max="2" step="0.01">
+          <div class="setting-desc">Комиссия удерживается при открытии и закрытии позиций (по умолчанию 0.05%).</div>
+        </div>
+      </div>
+
+      <div class="tv-modal-footer">
+        <button class="btn-secondary" id="btnCloseSettingsBottom">Отмена</button>
+        <button class="btn-primary" id="btnSaveSettings">Сохранить настройки</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Indicators Modal Dialog (OpenAlgo 112 Technical Indicators) -->
+  <div class="tv-modal-backdrop" id="indicatorsModal">
+    <div class="tv-modal" style="width: 580px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div class="tv-modal-header">
+        <div class="tv-modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Технические индикаторы (OpenAlgo)</span>
+        </div>
+        <button class="tv-modal-close" id="btnCloseIndicators">&times;</button>
+      </div>
+      <div style="padding: 10px 16px 0 16px;">
+        <input type="text" class="symbol-search-input" id="inputSearchIndicator" placeholder="Быстрый поиск индикатора (напр. EMA, RSI, MACD, Bollinger)..." autocomplete="off">
+      </div>
+      <div class="tv-modal-body" style="overflow-y: auto; flex: 1; padding-top: 10px;">
+        <div class="indicator-category-title">Популярные индикаторы</div>
+        <div class="indicator-list" id="indicatorListContainer">
+          <!-- Populated dynamically from OpenAlgo registeredIndicators -->
+        </div>
+      </div>
+      <div class="tv-modal-footer">
+        <button class="btn-primary" id="btnDoneIndicators">Готово</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start Point Dropdown Menu -->
+  <div class="tv-start-point-menu" id="startPointMenu" style="display: none;">
+    <div class="start-point-header">ВЫБРАТЬ НАЧАЛЬНУЮ ТОЧКУ СИМУЛЯЦИИ</div>
+    
+    <div class="start-point-item" id="optStartBar">
+      <div class="start-point-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="3" height="16" rx="0.5"></rect>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+          <polyline points="14 7 9 12 14 17"></polyline>
+        </svg>
+      </div>
+      <span class="start-point-text">Выбрать бар на графике (кликнуть свечу)</span>
+    </div>
+
+    <div class="start-point-item" id="optStartDate">
+      <div class="start-point-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+          <line x1="7" y1="2" x2="7" y2="5"></line>
+          <line x1="17" y1="2" x2="17" y2="5"></line>
+          <line x1="17" y1="13" x2="7" y2="13"></line>
+          <polyline points="11 9 7 13 11 17"></polyline>
+        </svg>
+      </div>
+      <span class="start-point-text">Перейти к дате и времени...</span>
+    </div>
+
+    <div class="start-point-item" id="optStartFirstDate">
+      <div class="start-point-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="4" cy="20" r="2"></circle>
+          <line x1="4" y1="18" x2="4" y2="4"></line>
+          <path d="M4 4h13l-2.5 5 2.5 5H4"></path>
+        </svg>
+      </div>
+      <span class="start-point-text">Первая доступная дата (начало истории)</span>
+    </div>
+
+    <div class="start-point-item" id="optStartRandomBar">
+      <div class="start-point-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="15" height="15" rx="3"></rect>
+          <circle cx="7" cy="9" r="1.2" fill="currentColor"></circle>
+          <circle cx="10.5" cy="12.5" r="1.2" fill="currentColor"></circle>
+          <circle cx="14" cy="16" r="1.2" fill="currentColor"></circle>
+          <path d="M19 1l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </div>
+      <span class="start-point-text">Случайный бар (слепой тест стратегии)</span>
+    </div>
+  </div>
+
+  <!-- Date Picker Modal Dialog -->
+  <div class="tv-modal-backdrop" id="datePickerModal">
+    <div class="tv-modal" style="width: 400px;">
+      <div class="tv-modal-header">
+        <div class="tv-modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+            <line x1="7" y1="2" x2="7" y2="5"></line>
+            <line x1="17" y1="2" x2="17" y2="5"></line>
+          </svg>
+          <span>Перейти к дате в истории</span>
+        </div>
+        <button class="tv-modal-close" id="btnCloseDatePicker">&times;</button>
+      </div>
+
+      <div class="tv-modal-body">
+        <div id="datePickerRangeInfo" style="font-size: 12px; color: var(--tv-text); margin-bottom: 14px; background: rgba(41, 98, 255, 0.12); border: 1px solid rgba(41, 98, 255, 0.3); border-radius: 4px; padding: 8px 10px; line-height: 1.4;">
+          Доступный диапазон: ...
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">Дата (ДД.ММ.ГГГГ)</label>
+          <input type="date" class="setting-input" id="inputJumpDate">
+        </div>
+
+        <div class="setting-group" id="groupJumpTime">
+          <label class="setting-label">Время (ЧЧ:ММ, по МСК)</label>
+          <input type="time" class="setting-input" id="inputJumpTime" value="10:00">
+        </div>
+        
+        <div style="display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap;">
+          <button type="button" class="btn-secondary" id="btnQuickEarliest" style="font-size: 11px; padding: 4px 8px;">Первая дата</button>
+          <button type="button" class="btn-secondary" id="btnQuickMonthAgo" style="font-size: 11px; padding: 4px 8px;">-1 месяц</button>
+          <button type="button" class="btn-secondary" id="btnQuickWeekAgo" style="font-size: 11px; padding: 4px 8px;">-1 неделя</button>
+          <button type="button" class="btn-secondary" id="btnQuickLatest" style="font-size: 11px; padding: 4px 8px;">Последняя дата</button>
+        </div>
+      </div>
+
+      <div class="tv-modal-footer">
+        <button class="btn-secondary" id="btnCancelDatePicker">Отмена</button>
+        <button class="btn-primary" id="btnApplyDatePicker">Перейти к точке</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- OpenAlgo Charts Core & Tiers -->
+  <script src="js/vendor/openalgo-charts.standalone.js"></script>
+  <script src="js/vendor/openalgo-charts.draw.standalone.js"></script>
+  <script src="js/vendor/openalgo-charts.indicators.standalone.js"></script>
+  <script src="js/vendor/openalgo-charts.trade.standalone.js"></script>
+
+  <!-- Application Logic -->
+  <script src="js/api.js"></script>
+  <script src="js/paper-trading.js"></script>
+  <script src="js/simulator.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "tinkoffToken": "",
+  "initialBalance": 100000,
+  "currency": "RUB",
+  "commission": 0.05,
+  "selectedSymbol": "SBER",
+  "selectedFigi": "BBG004730N88",
+  "selectedTimeframe": "1h"
+}
