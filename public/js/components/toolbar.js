@@ -53,6 +53,10 @@ export class ToolbarComponent {
   initSymbolSelector() {
     if (!this.symbolTrigger || !this.symbolDropdown) return;
 
+    if (this.symbolTickerText) {
+      this.symbolTickerText.textContent = this.store.get('currentSymbol') || 'SBER';
+    }
+
     this.symbolTrigger.onclick = (e) => {
       e.stopPropagation();
       this.symbolDropdown.classList.toggle('open');
@@ -110,17 +114,25 @@ export class ToolbarComponent {
   }
 
   initTimeframeButtons() {
+    const currentTf = this.store.get('currentTimeframe') || '1h';
     this.timeframeButtons.forEach(btn => {
+      const tf = btn.getAttribute('data-tf');
+      if (tf === currentTf) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+
       btn.onclick = () => {
         const newTf = btn.getAttribute('data-tf');
-        const currentTf = this.store.get('currentTimeframe');
-        if (newTf === currentTf) return;
+        const activeTf = this.store.get('currentTimeframe');
+        if (newTf === activeTf) return;
 
         this.timeframeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
         this.store.set('currentTimeframe', newTf);
-        eventBus.emit('timeframe:change', { newTf, prevTf: currentTf });
+        eventBus.emit('timeframe:change', { newTf, prevTf: activeTf });
       };
     });
   }

@@ -80,6 +80,16 @@ export class ChartControllerComponent {
 
       this.store.mainSeries = this.mainSeries;
 
+      // Apply initial saved chart type if not default candlestick
+      const initialChartType = this.store.get('currentChartType') || 'candlestick';
+      if (initialChartType !== 'candlestick' && typeof this.chart.setSeriesType === 'function') {
+        try {
+          this.chart.setSeriesType(this.mainSeries, initialChartType);
+        } catch (err) {
+          console.warn('[ChartController] Failed to set initial series type:', err);
+        }
+      }
+
       // Markers layer for trade entry/exit arrows
       if (this.mainSeries && typeof this.mainSeries.createMarkers === 'function') {
         try {
@@ -91,8 +101,9 @@ export class ChartControllerComponent {
 
       // Initialize OpenAlgo DrawingController
       if (OpenAlgoCharts.draw && OpenAlgoCharts.draw.DrawingController) {
+        const isMagnetActive = !!this.store.get('isMagnetActive');
         this.drawingController = new OpenAlgoCharts.draw.DrawingController(this.chart, {
-          magnet: 'off'
+          magnet: isMagnetActive ? 'weak' : 'off'
         });
         this.store.drawingController = this.drawingController;
       }

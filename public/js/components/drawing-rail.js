@@ -5,7 +5,7 @@ import { eventBus } from '../core/event-bus.js';
 export class DrawingRailComponent {
   constructor(store) {
     this.store = store;
-    this.isMagnetActive = false;
+    this.isMagnetActive = !!this.store.get('isMagnetActive');
     this.chartEl = document.getElementById('chart');
     this.leftToolButtons = document.querySelectorAll('.left-tool-btn[data-tool]');
     this.toolMagnet = document.getElementById('toolMagnet');
@@ -23,8 +23,10 @@ export class DrawingRailComponent {
     });
 
     if (this.toolMagnet) {
+      this.toolMagnet.classList.toggle('active', this.isMagnetActive);
       this.toolMagnet.onclick = () => {
         this.isMagnetActive = !this.isMagnetActive;
+        this.store.set('isMagnetActive', this.isMagnetActive);
         this.toolMagnet.classList.toggle('active', this.isMagnetActive);
         if (this.store.drawingController) {
           this.store.drawingController.setOptions({ magnet: this.isMagnetActive ? 'weak' : 'off' });
