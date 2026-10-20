@@ -79,7 +79,8 @@ export class ChartControllerComponent {
         watermark: false,
         branding: false,
         axisChrome: { sessionClock: true, barCountdown: false },
-        doubleClick: 'none'
+        doubleClick: 'none',
+        legendOffset: { top: 90, left: 18 }
       });
 
       this.chart._doubleClick = 'none';
@@ -241,6 +242,7 @@ export class ChartControllerComponent {
             this.chart.applySize(w, h);
           }
         }
+        this.syncIndicatorLegendOffset();
       };
 
       window.addEventListener('resize', handleResize);
@@ -249,6 +251,9 @@ export class ChartControllerComponent {
         this.resizeObserver = new ResizeObserver(() => handleResize());
         this.resizeObserver.observe(this.chartEl);
       }
+
+      // Initial alignment of indicator legends below BUY/SELL quick trading widget
+      setTimeout(() => this.syncIndicatorLegendOffset(), 100);
 
       eventBus.on('bar:tick', (bar) => {
         this.updateLegend(bar);
@@ -263,6 +268,29 @@ export class ChartControllerComponent {
 
     } catch (err) {
       console.error('Failed to initialize OpenAlgo Charts:', err);
+    }
+  }
+
+  /**
+   * Keep technical indicators legend stack positioned below the BUY/SELL quick trading widget,
+   * exactly mirroring TradingView's on-chart hierarchy.
+   */
+  syncIndicatorLegendOffset() {
+    if (!this.chart || !this.chart._legendStack) return;
+    const qtw = document.getElementById('chartQuickTradeWidget');
+    let topOffset = 90;
+    let leftOffset = 18;
+    if (qtw && this.chartEl) {
+      const qtwRect = qtw.getBoundingClientRect();
+      const chartRect = this.chartEl.getBoundingClientRect();
+      if (qtwRect.bottom > 0 && chartRect.top > 0) {
+        topOffset = Math.round(qtwRect.bottom - chartRect.top + 8);
+        leftOffset = Math.max(18, Math.round(qtwRect.left - chartRect.left));
+      }
+    }
+    this.chart._legendStack._legendOffset = { top: topOffset, left: leftOffset };
+    if (typeof this.chart._legendStack._syncLegendOffsets === 'function') {
+      this.chart._legendStack._syncLegendOffsets();
     }
   }
 

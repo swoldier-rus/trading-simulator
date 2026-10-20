@@ -141,6 +141,18 @@ export class ModalsComponent {
   populateIndicatorsList() {
     if (!window.OpenAlgoCharts || !OpenAlgoCharts.registeredIndicators) return;
     const indicators = OpenAlgoCharts.registeredIndicators();
+
+    // Sync activeIndicators with actual active indicators on chart
+    if (this.store.chart && Array.isArray(this.store.chart._indicators)) {
+      this.activeIndicators.clear();
+      for (const ind of this.store.chart._indicators) {
+        if (ind && ind.indicatorId) {
+          this.activeIndicators.set(ind.indicatorId, ind);
+        }
+      }
+      this.updateIndicatorBadge();
+    }
+
     this.renderIndicatorList(indicators);
   }
 
@@ -176,6 +188,9 @@ export class ModalsComponent {
             const handle = chart.addIndicator(id);
             this.activeIndicators.set(id, handle);
             item.classList.add('active');
+            if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
+              this.store.chartController.syncIndicatorLegendOffset();
+            }
             showToast(`Индикатор ${id.toUpperCase()} добавлен`, 'info');
           } catch (err) {
             console.error('Error adding indicator:', err);
@@ -189,6 +204,9 @@ export class ModalsComponent {
               chart.removeIndicator(handle);
               this.activeIndicators.delete(id);
               item.classList.remove('active');
+              if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
+                this.store.chartController.syncIndicatorLegendOffset();
+              }
               showToast(`Индикатор ${id.toUpperCase()} удален`, 'info');
             }
           } catch (err) {
