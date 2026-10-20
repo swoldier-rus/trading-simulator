@@ -462,11 +462,23 @@ class PaperTradingAccount {
     return this.updatePositionBrackets(positionId, pos.sl, tp);
   }
 
-  // Process historical bar: check limit/stop order fills, SL/TP triggers, update PnL
-  onCandle(candle, symbol) {
+  // Helper to calculate intra-bar 4-tick prices for a candle
+  getIntraBarTicks(candle) {
     if (!candle) return [];
+    const { open, high, low, close } = candle;
+    if (close >= open) {
+      // Bullish candle: Open -> Low wick -> High surge -> Close
+      return [open, low, high, close];
+    } else {
+      // Bearish candle: Open -> High wick -> Low plunge -> Close
+      return [open, high, low, close];
+    }
+  }
 
-    const { open, high, low, close, time } = candle;
+  // Process individual price tick (intra-bar micro-step or real-time tick)
+  onPriceTick(tickPrice, time, symbol, candle = null) {
+    if (tickPrice === undefined || tickPrice === null || isNaN(tickPrice)) return [];
+    tickPrice = Number(tickPrice);
     const events = [];
 
     // 1. Check pending Limit / Stop orders
@@ -478,21 +490,21 @@ class PaperTradingAccount {
       let fillPrice = ord.price;
 
       if (ord.side === 'BUY') {
-        if (ord.type === 'LIMIT' && low <= ord.price) {
+        if (ord.type === 'LIMIT' && tickPrice <= ord.price) {
           filled = true;
-          fillPrice = open < ord.price ? open : ord.price; // realistic gap opening
-        } else if (ord.type === 'STOP' && high >= ord.price) {
+          fillPrice = (candle && candle.open < ord.price && tickPrice === candle.open) ? candle.open : ord.price;
+        } else if (ord.type === 'STOP' && tickPrice >= ord.price) {
           filled = true;
-          fillPrice = open > ord.price ? open : ord.price;
+          fillPrice = (candle && candle.open > ord.price && tickPrice === candle.open) ? candle.open : ord.price;
         }
       } else {
         // SELL
-        if (ord.type === 'LIMIT' && high >= ord.price) {
+        if (ord.type === 'LIMIT' && tickPrice >= ord.price) {
           filled = true;
-          fillPrice = open > ord.price ? open : ord.price;
-        } else if (ord.type === 'STOP' && low <= ord.price) {
+          fillPrice = (candle && candle.open > ord.price && tickPrice === candle.open) ? candle.open : ord.price;
+        } else if (ord.type === 'STOP' && tickPrice <= ord.price) {
           filled = true;
-          fillPrice = open < ord.price ? open : ord.price;
+          fillPrice = (candle && candle.open < ord.price && tickPrice === candle.open) ? candle.open : ord.price;
         }
       }
 
@@ -522,7 +534,7 @@ class PaperTradingAccount {
       }
     }
 
-    // 2. Check open positions for SL and TP against bar extremes
+    // 2. Check open positions for SL and TP against current tick price
     for (let i = this.positions.length - 1; i >= 0; i--) {
       const pos = this.positions[i];
       if (symbol && pos.symbol !== symbol) continue;
@@ -532,20 +544,20 @@ class PaperTradingAccount {
 
       if (pos.side === 'BUY') {
         // Long position
-        if (pos.sl !== null && low <= pos.sl) {
-          exitPrice = open < pos.sl ? open : pos.sl;
+        if (pos.sl !== null && tickPrice <= pos.sl) {
+          exitPrice = (candle && candle.open < pos.sl && tickPrice === candle.open) ? candle.open : pos.sl;
           reason = 'Stop Loss';
-        } else if (pos.tp !== null && high >= pos.tp) {
-          exitPrice = open > pos.tp ? open : pos.tp;
+        } else if (pos.tp !== null && tickPrice >= pos.tp) {
+          exitPrice = (candle && candle.open > pos.tp && tickPrice === candle.open) ? candle.open : pos.tp;
           reason = 'Take Profit';
         }
       } else {
         // Short position
-        if (pos.sl !== null && high >= pos.sl) {
-          exitPrice = open > pos.sl ? open : pos.sl;
+        if (pos.sl !== null && tickPrice >= pos.sl) {
+          exitPrice = (candle && candle.open > pos.sl && tickPrice === candle.open) ? candle.open : pos.sl;
           reason = 'Stop Loss';
-        } else if (pos.tp !== null && low <= pos.tp) {
-          exitPrice = open < pos.tp ? open : pos.tp;
+        } else if (pos.tp !== null && tickPrice <= pos.tp) {
+          exitPrice = (candle && candle.open < pos.tp && tickPrice === candle.open) ? candle.open : pos.tp;
           reason = 'Take Profit';
         }
       }
@@ -560,24 +572,39 @@ class PaperTradingAccount {
           });
         }
       } else {
-        // Update unrealized PnL with current bar close
-        pos.currentPrice = close;
+        // Update unrealized PnL with current tick price
+        pos.currentPrice = tickPrice;
         let pnl = 0;
         if (pos.side === 'BUY') {
-          pnl = (close - pos.entryPrice) * pos.qty;
+          pnl = (tickPrice - pos.entryPrice) * pos.qty;
         } else {
-          pnl = (pos.entryPrice - close) * pos.qty;
+          pnl = (pos.entryPrice - tickPrice) * pos.qty;
         }
         pos.unrealizedPnL = +pnl.toFixed(2);
-        pos.unrealizedPnLPercent = +(((close - pos.entryPrice) / pos.entryPrice) * 100 * (pos.side === 'BUY' ? 1 : -1)).toFixed(2);
+        pos.unrealizedPnLPercent = +(((tickPrice - pos.entryPrice) / pos.entryPrice) * 100 * (pos.side === 'BUY' ? 1 : -1)).toFixed(2);
       }
     }
 
-    // 3. Update equity curve & drawdown
+    // 3. Update equity curve & notify
     this._updateEquity(time);
     this.notifyUpdate();
 
     return events;
+  }
+
+  // Process historical bar: execute the 4 intra-bar ticks sequentially for 100% realism
+  onCandle(candle, symbol) {
+    if (!candle) return [];
+    const ticks = this.getIntraBarTicks(candle);
+    const allEvents = [];
+    for (let i = 0; i < ticks.length; i++) {
+      const tickPrice = ticks[i];
+      const events = this.onPriceTick(tickPrice, candle.time, symbol, i === 0 ? candle : null);
+      if (events && events.length > 0) {
+        allEvents.push(...events);
+      }
+    }
+    return allEvents;
   }
 
   // Internal: calculate equity, drawdown, and record history

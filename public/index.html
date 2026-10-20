@@ -160,7 +160,16 @@
       <button class="replay-control-btn replay-play-btn" id="btnReplayPlay" title="Старт / Пауза (Пробел)">▶</button>
 
       <!-- Step forward -->
-      <button class="replay-control-btn" id="btnReplayStep" title="Следующий бар (Стрелка вправо)">⏭</button>
+      <button class="replay-control-btn" id="btnReplayStep" title="Следующий шаг (Стрелка вправо)">⏭</button>
+
+      <!-- Sub-tick phase indicator badge -->
+      <span class="replay-subtick-badge" id="replaySubTickBadge" style="display: none;"></span>
+
+      <!-- Intra-bar ticks toggle button -->
+      <button class="replay-control-btn replay-ticks-toggle-btn active" id="btnToggleIntraBar" title="Внутрибарная реалистичная симуляция (4 фазы: Открытие -> Тень -> Пик -> Закрытие)">
+        <span class="ticks-icon">⚡</span>
+        <span class="ticks-text">Тики: ВКЛ</span>
+      </button>
 
       <!-- Speed selector -->
       <select class="replay-speed-select" id="replaySpeedSelect" title="Скорость симуляции">

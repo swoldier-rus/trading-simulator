@@ -10,10 +10,123 @@ class MarketSimulator {
     this.prefetchThreshold = 150; // Prefetch subsequent bars when within 150 bars of the end
     this.canLoadMoreBars = true;
 
+    // Realistic intra-bar simulation (4 micro-tick phases per candle)
+    this.isIntraBarEnabled = true;
+    this.subTickIndex = -1; // -1 = idle / completed bar, 0 = open, 1 = wick, 2 = surge, 3 = close
+    this.currentCandleTicks = null;
+    this.currentFormingBar = null;
+
     // Listeners
     this.onBarAdvance = null;
     this.onStateChange = null;
     this.onNeedMoreBars = null;
+  }
+
+  // Notify listeners of simulator state changes
+  _emitStateChange(extra = null) {
+    if (this.onStateChange) {
+      this.onStateChange({
+        isReplayActive: this.isReplayActive,
+        isPlaying: this.isPlaying,
+        currentIndex: this.currentIndex,
+        totalBars: this.allCandles.length,
+        isIntraBarEnabled: this.isIntraBarEnabled,
+        subTickIndex: this.subTickIndex,
+        subTickInfo: extra
+      });
+    }
+  }
+
+  // Generate 4 realistic price phases for a historical candle:
+  // Phase 0: Open
+  // Phase 1: Initial Wick (Low if bullish, High if bearish)
+  // Phase 2: Extreme Surge (High if bullish, Low if bearish)
+  // Phase 3: Bar Close
+  getIntraBarPhases(candle) {
+    if (!candle) return [];
+    const { open, high, low, close, time, volume = 0 } = candle;
+    const isBullish = close >= open;
+
+    return [
+      {
+        phase: 0,
+        name: 'open',
+        label: 'Открытие',
+        price: open,
+        isNewBar: true,
+        bar: {
+          time,
+          open,
+          high: open,
+          low: open,
+          close: open,
+          volume: Math.round(volume * 0.1)
+        }
+      },
+      {
+        phase: 1,
+        name: isBullish ? 'low' : 'high',
+        label: isBullish ? 'Тень Low' : 'Тень High',
+        price: isBullish ? low : high,
+        isNewBar: false,
+        bar: {
+          time,
+          open,
+          high: isBullish ? open : high,
+          low: isBullish ? low : open,
+          close: isBullish ? low : high,
+          volume: Math.round(volume * 0.35)
+        }
+      },
+      {
+        phase: 2,
+        name: isBullish ? 'high' : 'low',
+        label: isBullish ? 'Пик High' : 'Дно Low',
+        price: isBullish ? high : low,
+        isNewBar: false,
+        bar: {
+          time,
+          open,
+          high,
+          low,
+          close: isBullish ? high : low,
+          volume: Math.round(volume * 0.75)
+        }
+      },
+      {
+        phase: 3,
+        name: 'close',
+        label: 'Закрытие',
+        price: close,
+        isNewBar: false,
+        bar: {
+          time,
+          open,
+          high,
+          low,
+          close,
+          volume
+        }
+      }
+    ];
+  }
+
+  // Toggle or set intra-bar simulation mode
+  setIntraBarMode(enabled) {
+    this.isIntraBarEnabled = !!enabled;
+    if (!this.isIntraBarEnabled) {
+      if (this.currentFormingBar && this.subTickIndex >= 0) {
+        this.currentIndex++;
+      }
+      this.subTickIndex = -1;
+      this.currentCandleTicks = null;
+      this.currentFormingBar = null;
+    }
+    if (this.isPlaying) {
+      this.pause();
+      this.play();
+    }
+    this._emitStateChange();
   }
 
   // Load new dataset
@@ -23,15 +136,11 @@ class MarketSimulator {
     this.currentIndex = this.allCandles.length;
     this.isReplayActive = false;
     this.canLoadMoreBars = true;
+    this.subTickIndex = -1;
+    this.currentCandleTicks = null;
+    this.currentFormingBar = null;
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
 
     return this.getVisibleCandles();
   }
@@ -50,14 +159,7 @@ class MarketSimulator {
     // Append newer bars to the future end of history
     this.allCandles = [...this.allCandles, ...fresh];
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
 
     return fresh.length;
   }
@@ -77,14 +179,7 @@ class MarketSimulator {
     this.allCandles = [...fresh, ...this.allCandles];
     this.currentIndex += fresh.length;
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
 
     return fresh.length;
   }
@@ -95,6 +190,9 @@ class MarketSimulator {
 
     this.pause();
     this.isReplayActive = true;
+    this.subTickIndex = -1;
+    this.currentCandleTicks = null;
+    this.currentFormingBar = null;
 
     if (targetIndex !== null && targetIndex >= 5 && targetIndex <= this.allCandles.length) {
       this.currentIndex = targetIndex;
@@ -103,18 +201,16 @@ class MarketSimulator {
       this.currentIndex = Math.max(15, Math.floor(this.allCandles.length * 0.65));
     }
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
 
     const currentBar = this.getCurrentBar();
     if (this.onBarAdvance && currentBar) {
-      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true);
+      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true, {
+        isSubTick: false,
+        phase: 3,
+        phaseName: 'close',
+        phaseLabel: 'Закрытие'
+      });
     }
 
     // Check if subsequent bars should be prefetched in advance
@@ -131,19 +227,20 @@ class MarketSimulator {
     this.pause();
     this.isReplayActive = false;
     this.currentIndex = this.allCandles.length;
+    this.subTickIndex = -1;
+    this.currentCandleTicks = null;
+    this.currentFormingBar = null;
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
 
     const currentBar = this.getCurrentBar();
     if (this.onBarAdvance && currentBar) {
-      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true);
+      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true, {
+        isSubTick: false,
+        phase: 3,
+        phaseName: 'close',
+        phaseLabel: 'Закрытие'
+      });
     }
 
     // Check if subsequent bars should be prefetched in advance
@@ -178,19 +275,20 @@ class MarketSimulator {
       this.pause();
       this.isReplayActive = true;
       this.currentIndex = Math.max(1, index + 1);
+      this.subTickIndex = -1;
+      this.currentCandleTicks = null;
+      this.currentFormingBar = null;
 
-      if (this.onStateChange) {
-        this.onStateChange({
-          isReplayActive: this.isReplayActive,
-          isPlaying: this.isPlaying,
-          currentIndex: this.currentIndex,
-          totalBars: this.allCandles.length
-        });
-      }
+      this._emitStateChange();
 
       const currentBar = this.getCurrentBar();
       if (this.onBarAdvance && currentBar) {
-        this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true);
+        this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true, {
+          isSubTick: false,
+          phase: 3,
+          phaseName: 'close',
+          phaseLabel: 'Закрытие'
+        });
       }
 
       return this.getVisibleCandles();
@@ -249,8 +347,8 @@ class MarketSimulator {
     return this.appendHistory(newBars);
   }
 
-  // Step 1 bar forward
-  stepForward() {
+  // Step 1 bar or sub-tick forward
+  stepForward(forceFullBar = false) {
     // 1. Check if we need to prefetch subsequent bars ahead of time
     const remaining = this.allCandles.length - this.currentIndex;
     if (this.isReplayActive && remaining <= this.prefetchThreshold) {
@@ -269,53 +367,131 @@ class MarketSimulator {
       return null;
     }
 
-    const nextBar = this.allCandles[this.currentIndex];
-    this.currentIndex++;
+    if (!this.isIntraBarEnabled || forceFullBar) {
+      // Full bar mode
+      this.subTickIndex = -1;
+      this.currentFormingBar = null;
+      this.currentCandleTicks = null;
+
+      const nextBar = this.allCandles[this.currentIndex];
+      this.currentIndex++;
+
+      const subTickInfo = {
+        isSubTick: false,
+        phase: 3,
+        phaseName: 'close',
+        phaseLabel: 'Закрытие',
+        isNewBar: true,
+        tickPrice: nextBar.close
+      };
+
+      if (this.onBarAdvance) {
+        this.onBarAdvance(nextBar, this.currentIndex, this.allCandles.length, false, subTickInfo);
+      }
+
+      this._emitStateChange(subTickInfo);
+
+      if (this.currentIndex >= this.allCandles.length) {
+        if (typeof this.onNeedMoreBars === 'function') {
+          this.onNeedMoreBars(0);
+        } else {
+          this.generateContinuousBars(50);
+        }
+      }
+
+      return nextBar;
+    }
+
+    // Intra-bar sub-tick mode
+    const targetCandle = this.allCandles[this.currentIndex];
+    if (!this.currentCandleTicks || this.subTickIndex === -1) {
+      this.currentCandleTicks = this.getIntraBarPhases(targetCandle);
+      this.subTickIndex = 0;
+    } else {
+      this.subTickIndex++;
+    }
+
+    const currentTick = this.currentCandleTicks[this.subTickIndex];
+    this.currentFormingBar = currentTick.bar;
+
+    const subTickInfo = {
+      isSubTick: true,
+      phase: currentTick.phase,
+      phaseName: currentTick.name,
+      phaseLabel: currentTick.label,
+      isNewBar: currentTick.isNewBar,
+      tickPrice: currentTick.price
+    };
 
     if (this.onBarAdvance) {
-      this.onBarAdvance(nextBar, this.currentIndex, this.allCandles.length, false);
+      this.onBarAdvance(
+        this.currentFormingBar,
+        this.currentIndex + 1,
+        this.allCandles.length,
+        false,
+        subTickInfo
+      );
     }
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    // If we just completed the 4th tick (phase 3: Close), commit the bar
+    if (this.subTickIndex >= 3) {
+      this.currentIndex++;
+      this.subTickIndex = -1;
+      this.currentFormingBar = null;
+      this.currentCandleTicks = null;
 
-    if (this.currentIndex >= this.allCandles.length) {
-      if (typeof this.onNeedMoreBars === 'function') {
-        this.onNeedMoreBars(0);
-      } else {
-        this.generateContinuousBars(50);
+      if (this.currentIndex >= this.allCandles.length) {
+        if (typeof this.onNeedMoreBars === 'function') {
+          this.onNeedMoreBars(0);
+        } else {
+          this.generateContinuousBars(50);
+        }
       }
     }
 
-    return nextBar;
+    this._emitStateChange(subTickInfo);
+    return currentTick.bar;
   }
 
   // Step 1 bar backward
   stepBackward() {
-    if (this.currentIndex <= 5) return null;
     this.pause();
-    this.currentIndex--;
-    const currentBar = this.getCurrentBar();
 
-    if (this.onBarAdvance) {
-      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true);
+    // If a sub-tick was in progress, cancel the forming candle and reset to current completed bar
+    if (this.subTickIndex >= 0) {
+      this.subTickIndex = -1;
+      this.currentFormingBar = null;
+      this.currentCandleTicks = null;
+      const currentBar = this.getCurrentBar();
+      if (this.onBarAdvance && currentBar) {
+        this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true, {
+          isSubTick: false,
+          phase: 3,
+          phaseName: 'close',
+          phaseLabel: 'Закрытие'
+        });
+      }
+      this._emitStateChange();
+      return currentBar;
     }
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
+    if (this.currentIndex <= 5) return null;
+    this.currentIndex--;
+    this.subTickIndex = -1;
+    this.currentFormingBar = null;
+    this.currentCandleTicks = null;
+    const currentBar = this.getCurrentBar();
+
+    if (this.onBarAdvance && currentBar) {
+      this.onBarAdvance(currentBar, this.currentIndex, this.allCandles.length, true, {
+        isSubTick: false,
+        phase: 3,
+        phaseName: 'close',
+        phaseLabel: 'Закрытие'
       });
     }
 
+    this._emitStateChange();
     return currentBar;
   }
 
@@ -339,18 +515,15 @@ class MarketSimulator {
     }
 
     this.isPlaying = true;
+    const intervalMs = this.isIntraBarEnabled
+      ? Math.max(50, Math.round(this.speedMs / 4))
+      : this.speedMs;
+
     this.playbackInterval = setInterval(() => {
       this.stepForward();
-    }, this.speedMs);
+    }, intervalMs);
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
   }
 
   pause() {
@@ -362,14 +535,7 @@ class MarketSimulator {
       this.playbackInterval = null;
     }
 
-    if (this.onStateChange) {
-      this.onStateChange({
-        isReplayActive: this.isReplayActive,
-        isPlaying: this.isPlaying,
-        currentIndex: this.currentIndex,
-        totalBars: this.allCandles.length
-      });
-    }
+    this._emitStateChange();
   }
 
   // Change playback speed (in ms)
@@ -383,11 +549,18 @@ class MarketSimulator {
 
   // Get currently visible candles slice
   getVisibleCandles() {
-    return this.allCandles.slice(0, this.currentIndex);
+    const slice = this.allCandles.slice(0, this.currentIndex);
+    if (this.currentFormingBar && this.subTickIndex >= 0) {
+      return [...slice, this.currentFormingBar];
+    }
+    return slice;
   }
 
   // Current bar
   getCurrentBar() {
+    if (this.currentFormingBar && this.subTickIndex >= 0) {
+      return this.currentFormingBar;
+    }
     if (this.currentIndex <= 0 || this.allCandles.length === 0) return null;
     return this.allCandles[this.currentIndex - 1];
   }

@@ -50,18 +50,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // 4. Connect Market Simulator Callbacks
-  simulator.onBarAdvance = (candle, index, total, isBackward = false) => {
+  simulator.onBarAdvance = (candle, index, total, isBackward = false, subTickInfo = null) => {
     if (!candle) return;
 
-    // Update chart series with current visible slice
-    const visible = simulator.getVisibleCandles();
-    if (store.mainSeries) {
-      store.mainSeries.setData(visible);
+    // Fast 60 FPS update for sub-tick animations; fallback to setData on bar jump/backward
+    if (subTickInfo?.isSubTick) {
+      if (store.mainSeries) {
+        try {
+          store.mainSeries.update(candle);
+        } catch (err) {
+          store.mainSeries.setData(simulator.getVisibleCandles());
+        }
+      }
+    } else {
+      const visible = simulator.getVisibleCandles();
+      if (store.mainSeries) {
+        store.mainSeries.setData(visible);
+      }
     }
 
-    // Process orders & SL/TP triggers
+    // Process orders & SL/TP triggers sequentially per tick
     if (!isBackward) {
-      const events = paperAccount.onCandle(candle, store.get('currentSymbol'));
+      const currentSymbol = store.get('currentSymbol');
+      const events = paperAccount.onPriceTick(candle.close, candle.time, currentSymbol, candle);
       if (events && events.length > 0) {
         events.forEach(ev => showToast(ev.message, ev.type === 'ORDER_FILLED' ? 'info' : 'success'));
       }
@@ -69,12 +80,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       paperAccount.onCandle(candle, store.get('currentSymbol'));
     }
 
+    if (store.quickTradeWidget) {
+      store.quickTradeWidget.updatePrice(candle);
+    }
+
     eventBus.emit('bar:tick', candle);
     eventBus.emit('replay:ui-update', {
       index,
       total,
       time: candle.time,
-      isPlaying: simulator.isPlaying
+      isPlaying: simulator.isPlaying,
+      subTickInfo
     });
   };
 
@@ -85,7 +101,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       index: state.currentIndex,
       total: state.totalBars,
       time: cur ? cur.time : null,
-      isPlaying: state.isPlaying
+      isPlaying: state.isPlaying,
+      subTickInfo: state.subTickInfo
     });
   };
 

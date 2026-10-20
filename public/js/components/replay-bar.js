@@ -19,6 +19,8 @@ export class ReplayBarComponent {
     this.btnReplayStep = document.getElementById('btnReplayStep');
     this.btnReplayStepBack = document.getElementById('btnReplayStepBack');
     this.btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
+    this.btnToggleIntraBar = document.getElementById('btnToggleIntraBar');
+    this.replaySubTickBadge = document.getElementById('replaySubTickBadge');
     this.replaySpeedSelect = document.getElementById('replaySpeedSelect');
     this.replayScrubSlider = document.getElementById('replayScrubSlider');
     this.replayInfoText = document.getElementById('replayInfoText');
@@ -67,8 +69,8 @@ export class ReplayBarComponent {
       }
     });
 
-    eventBus.on('replay:ui-update', ({ index, total, time, isPlaying }) => {
-      this.updateReadouts(index, total, time, isPlaying);
+    eventBus.on('replay:ui-update', ({ index, total, time, isPlaying, subTickInfo }) => {
+      this.updateReadouts(index, total, time, isPlaying, subTickInfo);
     });
 
     eventBus.on('replay:state-change', (isActive) => {
@@ -119,6 +121,29 @@ export class ReplayBarComponent {
     if (this.btnReplayStepBack) {
       this.btnReplayStepBack.onclick = () => {
         if (this.store.simulator) this.store.simulator.stepBackward();
+      };
+    }
+
+    if (this.btnToggleIntraBar) {
+      this.btnToggleIntraBar.onclick = () => {
+        const simulator = this.store.simulator;
+        if (!simulator) return;
+        const newMode = !simulator.isIntraBarEnabled;
+        simulator.setIntraBarMode(newMode);
+        this.btnToggleIntraBar.classList.toggle('active', newMode);
+        const textSpan = this.btnToggleIntraBar.querySelector('.ticks-text');
+        if (textSpan) {
+          textSpan.textContent = newMode ? 'Тики: ВКЛ' : 'Тики: ВЫКЛ';
+        }
+        if (!newMode && this.replaySubTickBadge) {
+          this.replaySubTickBadge.style.display = 'none';
+        }
+        showToast(
+          newMode
+            ? 'Внутрибарная симуляция включена (4 фазы: Открытие, Тень, Пик, Закрытие)'
+            : 'Внутрибарная симуляция выключена (побарный режим)',
+          'info'
+        );
       };
     }
 
@@ -352,7 +377,7 @@ export class ReplayBarComponent {
     }
   }
 
-  updateReadouts(index, total, time, isPlaying) {
+  updateReadouts(index, total, time, isPlaying, subTickInfo = null) {
     if (this.replayInfoText) {
       this.replayInfoText.textContent = `${index} / ${total}`;
     }
@@ -365,6 +390,27 @@ export class ReplayBarComponent {
     if (this.btnReplayPlay) {
       this.btnReplayPlay.textContent = isPlaying ? '⏸' : '▶';
       this.btnReplayPlay.title = isPlaying ? 'Пауза (Пробел)' : 'Старт (Пробел)';
+    }
+
+    // Sub-tick phase badge readout
+    if (this.replaySubTickBadge) {
+      if (subTickInfo && subTickInfo.isSubTick && subTickInfo.phaseLabel && this.store.simulator?.isIntraBarEnabled) {
+        this.replaySubTickBadge.style.display = 'inline-block';
+        this.replaySubTickBadge.textContent = subTickInfo.phaseLabel;
+        this.replaySubTickBadge.className = `replay-subtick-badge phase-${subTickInfo.phaseName}`;
+      } else {
+        this.replaySubTickBadge.style.display = 'none';
+      }
+    }
+
+    // Sync toggle button state
+    if (this.btnToggleIntraBar) {
+      const isTicks = !!this.store.simulator?.isIntraBarEnabled;
+      this.btnToggleIntraBar.classList.toggle('active', isTicks);
+      const textSpan = this.btnToggleIntraBar.querySelector('.ticks-text');
+      if (textSpan) {
+        textSpan.textContent = isTicks ? 'Тики: ВКЛ' : 'Тики: ВЫКЛ';
+      }
     }
   }
 

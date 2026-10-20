@@ -255,3 +255,74 @@
   flex: 1;
   white-space: nowrap;
 }
+
+/* Intra-bar Ticks Toggle Button */
+.replay-ticks-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--tv-border);
+  color: var(--tv-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.replay-ticks-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: #434651;
+}
+
+.replay-ticks-toggle-btn.active {
+  background: rgba(41, 98, 255, 0.18);
+  border-color: rgba(41, 98, 255, 0.6);
+  color: #82b1ff;
+}
+
+.replay-ticks-toggle-btn .ticks-icon {
+  font-size: 12px;
+  color: #ffeb3b;
+}
+
+/* Sub-tick Phase Indicator Badge */
+.replay-subtick-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.replay-subtick-badge.phase-open {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #e0e3eb;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.replay-subtick-badge.phase-low {
+  background-color: rgba(242, 54, 69, 0.2);
+  color: #ff5252;
+  border: 1px solid rgba(242, 54, 69, 0.45);
+}
+
+.replay-subtick-badge.phase-high {
+  background-color: rgba(8, 153, 129, 0.2);
+  color: #26a69a;
+  border: 1px solid rgba(8, 153, 129, 0.45);
+}
+
+.replay-subtick-badge.phase-close {
+  background-color: rgba(41, 98, 255, 0.2);
+  color: #82b1ff;
+  border: 1px solid rgba(41, 98, 255, 0.45);
+}
