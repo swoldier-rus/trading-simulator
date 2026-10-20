@@ -84,7 +84,9 @@ export class DrawingRailComponent {
     dc.__finishHooked = true;
 
     const origFinish = dc.finish;
+    const store = this.store;
     dc.finish = function(source = 'dblclick') {
+      store._lastToolFinishTime = Date.now();
       if ((this._tool === 'path' || this._tool === 'polyline') && Array.isArray(this._pending)) {
         if (source !== 'enter' && this._pending.length > 1) {
           this._pending.pop();

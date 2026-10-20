@@ -110,6 +110,10 @@ export class FloatingDrawingToolbarComponent {
     // Double-click on chart canvas to open full Settings Modal
     if (this.chartEl) {
       this.chartEl.addEventListener('dblclick', (e) => {
+        // Suppress opening Settings Modal if a drawing was just completed via double-click
+        if (Date.now() - (this.store._lastToolFinishTime || 0) < 500) {
+          return;
+        }
         const sel = dc.selection();
         if (sel && sel.length > 0) {
           e.stopPropagation();
