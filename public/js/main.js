@@ -1,0 +1,302 @@
+// main.js - Application Bootstrap & Coordinator Module (ES Module)
+import { eventBus } from './core/event-bus.js';
+import { store } from './core/store.js';
+import { API } from './api.js';
+import { PaperTradingAccount } from './paper-trading.js';
+import { MarketSimulator } from './simulator.js';
+import { IndicatorManager } from './indicators.js';
+import { showToast, timeframeToSeconds } from './core/utils.js';
+
+// Components
+import { ChartControllerComponent } from './components/chart-controller.js';
+import { DrawingRailComponent } from './components/drawing-rail.js';
+import { ToolbarComponent } from './components/toolbar.js';
+import { OrderPanelComponent } from './components/order-panel.js';
+import { ChartOrderMenuComponent } from './components/chart-order-menu.js';
+import { BottomDockComponent } from './components/bottom-dock.js';
+import { ReplayBarComponent } from './components/replay-bar.js';
+import { ModalsComponent } from './components/modals.js';
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Initialize Core Engines
+  const paperAccount = new PaperTradingAccount(100000, 0.0005);
+  const simulator = new MarketSimulator();
+
+  store.paperAccount = paperAccount;
+  store.simulator = simulator;
+
+  // 2. Instantiate Components
+  const chartController = new ChartControllerComponent(store);
+  const drawingRail = new DrawingRailComponent(store);
+  const toolbar = new ToolbarComponent(store);
+  const orderPanel = new OrderPanelComponent(store);
+  const chartOrderMenu = new ChartOrderMenuComponent(store);
+  const bottomDock = new BottomDockComponent(store);
+  const replayBar = new ReplayBarComponent(store);
+  const modals = new ModalsComponent(store);
+
+  store.indicatorManager = new IndicatorManager(store.chart);
+
+  // 3. Connect Paper Trading Account Listeners
+  paperAccount.onAccountUpdate = (metrics) => {
+    eventBus.emit('account:update', metrics);
+  };
+
+  // 4. Connect Market Simulator Callbacks
+  simulator.onBarAdvance = (candle, index, total, isBackward = false) => {
+    if (!candle) return;
+
+    // Update chart series with current visible slice
+    const visible = simulator.getVisibleCandles();
+    if (store.mainSeries) {
+      store.mainSeries.setData(visible);
+    }
+
+    // Process orders & SL/TP triggers
+    if (!isBackward) {
+      const events = paperAccount.onCandle(candle, store.get('currentSymbol'));
+      if (events && events.length > 0) {
+        events.forEach(ev => showToast(ev.message, ev.type === 'ORDER_FILLED' ? 'info' : 'success'));
+      }
+    } else {
+      paperAccount.onCandle(candle, store.get('currentSymbol'));
+    }
+
+    eventBus.emit('bar:tick', candle);
+    eventBus.emit('replay:ui-update', {
+      index,
+      total,
+      time: candle.time,
+      isPlaying: simulator.isPlaying
+    });
+  };
+
+  simulator.onStateChange = (state) => {
+    eventBus.emit('replay:state-change', state.isReplayActive);
+    const cur = simulator.getCurrentBar();
+    eventBus.emit('replay:ui-update', {
+      index: state.currentIndex,
+      total: state.totalBars,
+      time: cur ? cur.time : null,
+      isPlaying: state.isPlaying
+    });
+  };
+
+  // 5. Subsequent Historical Bars Prefetcher
+  let isPrefetchingFuture = false;
+  let prefetchPromise = null;
+
+  async function prefetchSubsequentBars() {
+    if (isPrefetchingFuture) return prefetchPromise;
+    if (!simulator.canLoadMoreBars) return null;
+
+    const allCandles = simulator.allCandles;
+    if (!allCandles || allCandles.length === 0) return null;
+
+    const latestBar = allCandles[allCandles.length - 1];
+    const latestTime = latestBar.time;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const tf = store.get('currentTimeframe');
+    const step = timeframeToSeconds(tf);
+
+    if (latestTime >= nowSec - Math.max(step * 2, 300)) {
+      simulator.canLoadMoreBars = false;
+      return null;
+    }
+
+    isPrefetchingFuture = true;
+    const batchCount = 400;
+    const toSec = Math.min(nowSec, latestTime + batchCount * step);
+    const fromSec = latestTime + 1;
+
+    prefetchPromise = (async () => {
+      try {
+        const data = await API.getCandles(store.get('currentSymbol'), store.get('currentFigi'), tf, batchCount, toSec, fromSec);
+        if (data && data.candles && data.candles.length > 0) {
+          const added = simulator.appendHistory(data.candles);
+          if (added === 0) {
+            simulator.canLoadMoreBars = false;
+          }
+          return added;
+        } else {
+          simulator.canLoadMoreBars = false;
+          return 0;
+        }
+      } catch (err) {
+        console.warn('[Prefetch] Error loading subsequent bars:', err);
+        return 0;
+      } finally {
+        isPrefetchingFuture = false;
+        prefetchPromise = null;
+      }
+    })();
+
+    return prefetchPromise;
+  }
+
+  simulator.onNeedMoreBars = async () => {
+    await prefetchSubsequentBars();
+  };
+
+  eventBus.on('replay:scrubbed', () => {
+    const remaining = simulator.allCandles.length - simulator.currentIndex;
+    if (remaining <= simulator.prefetchThreshold) {
+      prefetchSubsequentBars();
+    }
+  });
+
+  // 6. Candle Pipeline Loader
+  async function loadCandles(targetBarTime = null, preserveReplay = false) {
+    const currentSymbol = store.get('currentSymbol');
+    const currentFigi = store.get('currentFigi');
+    const currentTimeframe = store.get('currentTimeframe');
+
+    const legendSymbol = document.getElementById('legendSymbol');
+    const legendTF = document.getElementById('legendTF');
+    if (legendSymbol) legendSymbol.textContent = currentSymbol;
+    if (legendTF) legendTF.textContent = currentTimeframe.toUpperCase();
+
+    try {
+      let data = null;
+      const step = timeframeToSeconds(currentTimeframe);
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      if (targetBarTime) {
+        if (preserveReplay) {
+          const forwardSec = Math.max(350 * step, 7 * 86400);
+          const toSec = Math.min(nowSec, targetBarTime + forwardSec);
+          data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, toSec);
+        } else {
+          data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, targetBarTime);
+        }
+      } else {
+        data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200);
+      }
+
+      if (data && data.candles && data.candles.length > 0) {
+        store.set('currentLotSize', data.lot || 10);
+        orderPanel.updateLotsDisplay();
+
+        const tokenBadge = document.getElementById('tokenBadge');
+        const tokenStatusText = document.getElementById('tokenStatusText');
+        if (tokenBadge && tokenStatusText) {
+          if (data.source === 'tinkoff') {
+            tokenBadge.className = 'token-badge active';
+            tokenStatusText.textContent = 'Т-Инвестиции онлайн';
+          } else {
+            tokenBadge.className = 'token-badge demo';
+            tokenStatusText.textContent = 'Демо-симулятор';
+          }
+        }
+
+        isPrefetchingFuture = false;
+        prefetchPromise = null;
+        let visibleBars = simulator.loadData(data.candles);
+
+        if (preserveReplay && targetBarTime) {
+          simulator.jumpToBar(targetBarTime);
+          visibleBars = simulator.getVisibleCandles();
+          const remaining = simulator.allCandles.length - simulator.currentIndex;
+          if (remaining <= simulator.prefetchThreshold) {
+            prefetchSubsequentBars();
+          }
+        }
+
+        if (store.mainSeries) {
+          store.mainSeries.setData(visibleBars);
+          if (store.chart) store.chart.fitContent();
+        }
+
+        const latest = visibleBars[visibleBars.length - 1];
+        if (latest) {
+          chartController.updateLegend(latest);
+          orderPanel.updateQuickPrices(latest.close);
+          chartController.syncTradeOverlays(latest.close);
+        }
+      } else {
+        showToast('Не удалось загрузить данные свечей', 'error');
+      }
+    } catch (err) {
+      console.error('Error in loadCandles:', err);
+      showToast('Ошибка загрузки данных котировок', 'error');
+    }
+  }
+
+  // Event bus reactions
+  eventBus.on('timeframe:change', async ({ newTf, prevTf }) => {
+    const barInfo = chartController.getLastChartBarInfo();
+    let targetSec = barInfo.time;
+    if (targetSec && prevTf === '1d' && newTf !== '1d') {
+      targetSec = targetSec + 86400 - 1;
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    const isHistorical = barInfo.isReplay || barInfo.isScrolled || (targetSec && (nowSec - targetSec > 86400 * 2));
+
+    if (isHistorical && targetSec) {
+      await loadCandles(targetSec, barInfo.isReplay);
+    } else {
+      await loadCandles(null, false);
+    }
+  });
+
+  eventBus.on('symbol:change', async () => {
+    await loadCandles();
+  });
+
+  eventBus.on('settings:saved', async () => {
+    await loadCandles();
+  });
+
+  // 7. Global Keyboard Shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+
+    if (e.code === 'Space') {
+      e.preventDefault();
+      simulator.togglePlay();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      simulator.stepForward();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      simulator.stepBackward();
+    } else if (e.code === 'Escape') {
+      drawingRail.resetToCursor();
+      store.set('isSelectingJumpBar', false);
+      modals.closeAll();
+      const datePickerModal = document.getElementById('datePickerModal');
+      if (datePickerModal) datePickerModal.classList.remove('open');
+      const startPointMenu = document.getElementById('startPointMenu');
+      if (startPointMenu) startPointMenu.style.display = 'none';
+    } else if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') {
+      orderPanel.executeTrade('BUY');
+    } else if (e.key === 's' || e.key === 'S' || e.key === 'ы' || e.key === 'Ы') {
+      orderPanel.executeTrade('SELL');
+    }
+  });
+
+  // 8. Expose for testing and external controllers
+  window._app = {
+    chart: store.chart,
+    mainSeries: store.mainSeries,
+    simulator,
+    paperAccount,
+    store,
+    eventBus,
+    components: {
+      chartController,
+      drawingRail,
+      toolbar,
+      orderPanel,
+      chartOrderMenu,
+      bottomDock,
+      replayBar,
+      modals
+    },
+    loadCandles,
+    prefetchSubsequentBars
+  };
+
+  // 9. Startup Initial Data Load
+  await loadCandles();
+});

@@ -723,10 +723,13 @@ class PaperTradingAccount {
   }
 }
 
-// Export for browser & node
+// Export for browser & node & ES modules
 if (typeof window !== 'undefined') {
   window.PaperTradingAccount = PaperTradingAccount;
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = PaperTradingAccount;
 }
+
+export default PaperTradingAccount;
+export { PaperTradingAccount };

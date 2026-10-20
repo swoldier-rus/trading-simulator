@@ -182,3 +182,11 @@ class IndicatorsEngine {
     return false;
   }
 }
+
+if (typeof window !== 'undefined') {
+  window.IndicatorsEngine = IndicatorsEngine;
+  window.IndicatorManager = IndicatorsEngine;
+}
+
+export default IndicatorsEngine;
+export { IndicatorsEngine, IndicatorsEngine as IndicatorManager };

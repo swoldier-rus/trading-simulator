@@ -368,5 +368,10 @@ class MarketSimulator {
   }
 }
 
-// Export for browser
-window.MarketSimulator = MarketSimulator;
+// Export for browser & ES modules
+if (typeof window !== 'undefined') {
+  window.MarketSimulator = MarketSimulator;
+}
+
+export default MarketSimulator;
+export { MarketSimulator };
