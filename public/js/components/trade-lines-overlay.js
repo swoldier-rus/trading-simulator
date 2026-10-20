@@ -181,7 +181,7 @@ export class TradeLinesOverlayComponent {
       }
     }
 
-    // 2. Render Working / Pending Orders (LIMIT & STOP)
+    // 2. Render Working / Pending Orders (LIMIT & STOP) and their attached SL/TP brackets
     for (const ord of orders) {
       const ordY = this.chart.priceToCoordinate(ord.price);
       if (ordY !== null && ordY >= -20 && ordY <= containerHeight + 20) {
@@ -196,10 +196,60 @@ export class TradeLinesOverlayComponent {
               <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'}">${ord.type} ${isLong ? 'BUY' : 'SELL'} ${ord.lots}л</span>
               <span class="badge-price" data-field="price">${ord.price.toFixed(2)} ₽</span>
               <span class="badge-notional">${formatMoney(notional)}</span>
-              <button type="button" class="btn-line-icon btn-line-close" title="Отменить заявку" data-action="cancel-order" data-order-id="${ord.id}">✕</button>
+              <div class="badge-actions">
+                ${!ord.sl ? `<button type="button" class="btn-line-add btn-add-sl" title="Прикрепить Stop Loss к заявке" data-action="add-order-sl" data-order-id="${ord.id}">+ SL</button>` : ''}
+                ${!ord.tp ? `<button type="button" class="btn-line-add btn-add-tp" title="Прикрепить Take Profit к заявке" data-action="add-order-tp" data-order-id="${ord.id}">+ TP</button>` : ''}
+                <button type="button" class="btn-line-icon btn-line-close" title="Отменить заявку" data-action="cancel-order" data-order-id="${ord.id}">✕</button>
+              </div>
             </div>
           </div>
         `;
+      }
+
+      // Order Attached Stop Loss Line
+      if (ord.sl && ord.sl > 0) {
+        const slY = this.chart.priceToCoordinate(ord.sl);
+        if (slY !== null && slY >= -20 && slY <= containerHeight + 20) {
+          const lossDiff = Math.abs(ord.sl - ord.price);
+          const lossMoney = -(lossDiff * ord.qty);
+          const lossPct = -(ord.price > 0 ? (lossDiff / ord.price) * 100 : 0);
+
+          html += `
+            <div class="trade-overlay-line sl-line order-bracket" style="top: ${slY}px;" data-line-type="order-sl" data-order-id="${ord.id}">
+              <div class="trade-line-rail dashed"></div>
+              <div class="trade-badge sl-badge drag-handle" data-drag-type="order-sl" data-order-id="${ord.id}" title="Зажмите и перетащите мышкой для изменения Stop Loss заявки">
+                <span class="drag-grip">⠿</span>
+                <span class="badge-tag sl-tag">SL (${ord.type}) ${ord.lots}л</span>
+                <span class="badge-price" data-field="price">${ord.sl.toFixed(2)} ₽</span>
+                <span class="badge-calc text-negative" data-field="risk">${formatMoney(lossMoney)} (${lossPct.toFixed(2)}%)</span>
+                <button type="button" class="btn-line-icon btn-line-close" title="Отменить Stop Loss заявки" data-action="remove-order-sl" data-order-id="${ord.id}">✕</button>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      // Order Attached Take Profit Line
+      if (ord.tp && ord.tp > 0) {
+        const tpY = this.chart.priceToCoordinate(ord.tp);
+        if (tpY !== null && tpY >= -20 && tpY <= containerHeight + 20) {
+          const gainDiff = Math.abs(ord.tp - ord.price);
+          const gainMoney = +(gainDiff * ord.qty);
+          const gainPct = +(ord.price > 0 ? (gainDiff / ord.price) * 100 : 0);
+
+          html += `
+            <div class="trade-overlay-line tp-line order-bracket" style="top: ${tpY}px;" data-line-type="order-tp" data-order-id="${ord.id}">
+              <div class="trade-line-rail dashed"></div>
+              <div class="trade-badge tp-badge drag-handle" data-drag-type="order-tp" data-order-id="${ord.id}" title="Зажмите и перетащите мышкой для изменения Take Profit заявки">
+                <span class="drag-grip">⠿</span>
+                <span class="badge-tag tp-tag">TP (${ord.type}) ${ord.lots}л</span>
+                <span class="badge-price" data-field="price">${ord.tp.toFixed(2)} ₽</span>
+                <span class="badge-calc text-positive" data-field="reward">+${formatMoney(gainMoney)} (+${gainPct.toFixed(2)}%)</span>
+                <button type="button" class="btn-line-icon btn-line-close" title="Отменить Take Profit заявки" data-action="remove-order-tp" data-order-id="${ord.id}">✕</button>
+              </div>
+            </div>
+          `;
+        }
       }
     }
 
@@ -286,6 +336,36 @@ export class TradeLinesOverlayComponent {
         showToast('Take Profit отменен', 'info');
         break;
       }
+      case 'add-order-sl': {
+        const ord = paperAccount.orders.find(o => o.id === id);
+        if (ord) {
+          const isLong = ord.side === 'BUY';
+          const suggestedSL = +(ord.price * (isLong ? 0.99 : 1.01)).toFixed(2);
+          paperAccount.updateOrderSL(ord.id, suggestedSL);
+          showToast(`Stop Loss заявки выставлен на ${suggestedSL.toFixed(2)} ₽. Перетащите для настройки!`, 'success');
+        }
+        break;
+      }
+      case 'add-order-tp': {
+        const ord = paperAccount.orders.find(o => o.id === id);
+        if (ord) {
+          const isLong = ord.side === 'BUY';
+          const suggestedTP = +(ord.price * (isLong ? 1.015 : 0.985)).toFixed(2);
+          paperAccount.updateOrderTP(ord.id, suggestedTP);
+          showToast(`Take Profit заявки выставлен на ${suggestedTP.toFixed(2)} ₽. Перетащите для настройки!`, 'success');
+        }
+        break;
+      }
+      case 'remove-order-sl': {
+        paperAccount.updateOrderSL(id, null);
+        showToast('Stop Loss заявки отменен', 'info');
+        break;
+      }
+      case 'remove-order-tp': {
+        paperAccount.updateOrderTP(id, null);
+        showToast('Take Profit заявки отменен', 'info');
+        break;
+      }
       case 'cancel-order': {
         const ok = paperAccount.cancelOrder(id);
         if (ok) showToast('Заявка отменена с графика', 'info');
@@ -366,23 +446,43 @@ export class TradeLinesOverlayComponent {
 
     // Update projected PnL readout while dragging SL or TP
     const paperAccount = this.store.paperAccount;
-    if (paperAccount && (type === 'sl' || type === 'tp')) {
-      const pos = paperAccount.positions.find(p => p.id === id);
-      if (pos) {
-        const isLong = pos.side === 'BUY';
-        const diff = Math.abs(newPrice - pos.entryPrice);
-        const money = diff * pos.qty;
-        const pct = pos.entryPrice > 0 ? (diff / pos.entryPrice) * 100 : 0;
+    if (paperAccount) {
+      if (type === 'sl' || type === 'tp') {
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          const diff = Math.abs(newPrice - pos.entryPrice);
+          const money = diff * pos.qty;
+          const pct = pos.entryPrice > 0 ? (diff / pos.entryPrice) * 100 : 0;
 
-        if (type === 'sl') {
-          const riskField = handle.querySelector('[data-field="risk"]');
-          if (riskField) {
-            riskField.textContent = `-${formatMoney(money)} (-${pct.toFixed(2)}%)`;
+          if (type === 'sl') {
+            const riskField = handle.querySelector('[data-field="risk"]');
+            if (riskField) {
+              riskField.textContent = `-${formatMoney(money)} (-${pct.toFixed(2)}%)`;
+            }
+          } else if (type === 'tp') {
+            const rewardField = handle.querySelector('[data-field="reward"]');
+            if (rewardField) {
+              rewardField.textContent = `+${formatMoney(money)} (+${pct.toFixed(2)}%)`;
+            }
           }
-        } else if (type === 'tp') {
-          const rewardField = handle.querySelector('[data-field="reward"]');
-          if (rewardField) {
-            rewardField.textContent = `+${formatMoney(money)} (+${pct.toFixed(2)}%)`;
+        }
+      } else if (type === 'order-sl' || type === 'order-tp') {
+        const ord = paperAccount.orders.find(o => o.id === id);
+        if (ord) {
+          const diff = Math.abs(newPrice - ord.price);
+          const money = diff * ord.qty;
+          const pct = ord.price > 0 ? (diff / ord.price) * 100 : 0;
+
+          if (type === 'order-sl') {
+            const riskField = handle.querySelector('[data-field="risk"]');
+            if (riskField) {
+              riskField.textContent = `-${formatMoney(money)} (-${pct.toFixed(2)}%)`;
+            }
+          } else if (type === 'order-tp') {
+            const rewardField = handle.querySelector('[data-field="reward"]');
+            if (rewardField) {
+              rewardField.textContent = `+${formatMoney(money)} (+${pct.toFixed(2)}%)`;
+            }
           }
         }
       }
@@ -438,9 +538,23 @@ export class TradeLinesOverlayComponent {
         break;
       }
       case 'order': {
-        const ok = paperAccount.modifyOrder(id, newPrice);
+        const ok = paperAccount.modifyOrder(id, newPrice, true);
         if (ok) {
           showToast(`Заявка перемещена: ${newPrice.toFixed(2)} ₽`, 'info');
+        }
+        break;
+      }
+      case 'order-sl': {
+        const ok = paperAccount.updateOrderSL(id, newPrice);
+        if (ok) {
+          showToast(`Stop Loss заявки перемещен: ${newPrice.toFixed(2)} ₽`, 'info');
+        }
+        break;
+      }
+      case 'order-tp': {
+        const ok = paperAccount.updateOrderTP(id, newPrice);
+        if (ok) {
+          showToast(`Take Profit заявки перемещен: ${newPrice.toFixed(2)} ₽`, 'info');
         }
         break;
       }

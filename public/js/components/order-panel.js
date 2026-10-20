@@ -166,6 +166,16 @@ export class OrderPanelComponent {
     });
   }
 
+  getBasePriceForExitLevels() {
+    const selectedOrderType = this.store.get('selectedOrderType');
+    if (selectedOrderType !== 'MARKET' && this.inputLimitPrice) {
+      const limitVal = Number(this.inputLimitPrice.value);
+      if (limitVal > 0) return limitVal;
+    }
+    const sim = this.store.simulator;
+    return sim && sim.getCurrentBar() ? sim.getCurrentBar().close : 0;
+  }
+
   initExitLevels() {
     if (this.toggleTP) {
       this.toggleTP.onchange = () => {
@@ -176,12 +186,11 @@ export class OrderPanelComponent {
         }
         if (this.inputTP) {
           this.inputTP.disabled = !enabled;
-          if (enabled && !this.inputTP.value) {
-            const sim = this.store.simulator;
-            const cur = sim && sim.getCurrentBar() ? sim.getCurrentBar().close : 0;
-            if (cur > 0) {
+          if (enabled) {
+            const base = this.getBasePriceForExitLevels();
+            if (base > 0) {
               const side = this.store.get('currentSelectedSide');
-              const tpSuggest = side === 'BUY' ? cur * 1.02 : cur * 0.98;
+              const tpSuggest = side === 'BUY' ? base * 1.015 : base * 0.985;
               this.inputTP.value = tpSuggest.toFixed(2);
             }
           }
@@ -199,12 +208,11 @@ export class OrderPanelComponent {
         }
         if (this.inputSL) {
           this.inputSL.disabled = !enabled;
-          if (enabled && !this.inputSL.value) {
-            const sim = this.store.simulator;
-            const cur = sim && sim.getCurrentBar() ? sim.getCurrentBar().close : 0;
-            if (cur > 0) {
+          if (enabled) {
+            const base = this.getBasePriceForExitLevels();
+            if (base > 0) {
               const side = this.store.get('currentSelectedSide');
-              const slSuggest = side === 'BUY' ? cur * 0.99 : cur * 1.01;
+              const slSuggest = side === 'BUY' ? base * 0.99 : base * 1.01;
               this.inputSL.value = slSuggest.toFixed(2);
             }
           }
@@ -282,6 +290,29 @@ export class OrderPanelComponent {
       if (!orderPrice || orderPrice <= 0) {
         showToast('Пожалуйста, укажите цену для лимитной/стоп заявки', 'error');
         return;
+      }
+
+      // Validate SL and TP relative to order entry price to prevent instant stop-out
+      if (sl !== null && sl > 0) {
+        if (side === 'BUY' && sl >= orderPrice) {
+          showToast(`Для покупки (BUY) Stop Loss (${sl.toFixed(2)} ₽) должен быть ниже цены входа (${orderPrice.toFixed(2)} ₽)!`, 'error');
+          return;
+        }
+        if (side === 'SELL' && sl <= orderPrice) {
+          showToast(`Для продажи (SELL) Stop Loss (${sl.toFixed(2)} ₽) должен быть выше цены входа (${orderPrice.toFixed(2)} ₽)!`, 'error');
+          return;
+        }
+      }
+
+      if (tp !== null && tp > 0) {
+        if (side === 'BUY' && tp <= orderPrice) {
+          showToast(`Для покупки (BUY) Take Profit (${tp.toFixed(2)} ₽) должен быть выше цены входа (${orderPrice.toFixed(2)} ₽)!`, 'error');
+          return;
+        }
+        if (side === 'SELL' && tp >= orderPrice) {
+          showToast(`Для продажи (SELL) Take Profit (${tp.toFixed(2)} ₽) должен быть ниже цены входа (${orderPrice.toFixed(2)} ₽)!`, 'error');
+          return;
+        }
       }
     }
 

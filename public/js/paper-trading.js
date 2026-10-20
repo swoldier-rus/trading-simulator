@@ -322,10 +322,37 @@ class PaperTradingAccount {
   }
 
   // Modify limit/stop order price (e.g. from chart drag)
-  modifyOrder(orderId, newPrice) {
+  modifyOrder(orderId, newPrice, shiftBrackets = true) {
     const order = this.orders.find(o => o.id === orderId);
     if (!order || !newPrice || newPrice <= 0) return false;
+    const oldPrice = order.price;
     order.price = Number(newPrice);
+
+    // Shift attached SL and TP brackets proportionally
+    if (shiftBrackets && oldPrice > 0) {
+      const delta = +(order.price - oldPrice).toFixed(2);
+      if (order.sl !== null) order.sl = +(order.sl + delta).toFixed(2);
+      if (order.tp !== null) order.tp = +(order.tp + delta).toFixed(2);
+    }
+
+    this.notifyUpdate();
+    return true;
+  }
+
+  // Update attached Stop Loss on a pending order
+  updateOrderSL(orderId, sl) {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return false;
+    order.sl = sl !== undefined && sl !== null && sl !== '' ? Number(sl) : null;
+    this.notifyUpdate();
+    return true;
+  }
+
+  // Update attached Take Profit on a pending order
+  updateOrderTP(orderId, tp) {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return false;
+    order.tp = tp !== undefined && tp !== null && tp !== '' ? Number(tp) : null;
     this.notifyUpdate();
     return true;
   }
