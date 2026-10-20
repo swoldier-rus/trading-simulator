@@ -193,7 +193,7 @@ export class TradeLinesOverlayComponent {
             <div class="trade-line-rail dotted"></div>
             <div class="trade-badge order-badge drag-handle" data-drag-type="order" data-order-id="${ord.id}" title="Зажмите и перетащите мышкой для изменения цены заявки">
               <span class="drag-grip">⠿</span>
-              <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'} clickable" data-action="edit-order-lots" data-order-id="${ord.id}" title="Кликните, чтобы изменить количество лотов">${ord.type} ${isLong ? 'BUY' : 'SELL'} <b class="tag-lots-val">${ord.lots}л</b><span class="tag-edit-icon">✏️</span></span>
+              <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'} clickable" data-action="edit-order-lots" data-order-id="${ord.id}" title="Кликните, чтобы изменить количество лотов">${ord.type} ${isLong ? 'BUY' : 'SELL'} <b class="tag-lots-val">${ord.lots}л</b></span>
               <span class="badge-price" data-field="price">${ord.price.toFixed(2)} ₽</span>
               <span class="badge-notional">${formatMoney(notional)}</span>
               <div class="badge-actions">

@@ -590,16 +590,6 @@
   transform: scale(1.04);
 }
 
-.order-badge .order-tag.clickable .tag-edit-icon {
-  margin-left: 3px;
-  font-size: 10px;
-  opacity: 0.75;
-}
-
-.order-badge .order-tag.clickable:hover .tag-edit-icon {
-  opacity: 1;
-}
-
 /* Drag Handle Affordance */
 .drag-handle {
   cursor: grab;
