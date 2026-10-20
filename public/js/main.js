@@ -2,6 +2,7 @@
 import { eventBus } from './core/event-bus.js';
 import { store } from './core/store.js';
 import { API } from './api.js';
+import { marketDataService } from './services/market-data.service.js';
 import { PaperTradingAccount } from './paper-trading.js';
 import { MarketSimulator } from './simulator.js';
 import { IndicatorManager } from './indicators.js';
@@ -111,7 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     prefetchPromise = (async () => {
       try {
-        const data = await API.getCandles(store.get('currentSymbol'), store.get('currentFigi'), tf, batchCount, toSec, fromSec);
+        const data = await marketDataService.getCandles(store.get('currentSymbol'), store.get('currentFigi'), tf, batchCount, toSec, fromSec);
         if (data && data.candles && data.candles.length > 0) {
           const added = simulator.appendHistory(data.candles);
           if (added === 0) {
@@ -165,12 +166,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (preserveReplay) {
           const forwardSec = Math.max(350 * step, 7 * 86400);
           const toSec = Math.min(nowSec, targetBarTime + forwardSec);
-          data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, toSec);
+          data = await marketDataService.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, toSec);
         } else {
-          data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, targetBarTime);
+          data = await marketDataService.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200, targetBarTime);
         }
       } else {
-        data = await API.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200);
+        data = await marketDataService.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200);
       }
 
       if (data && data.candles && data.candles.length > 0) {
@@ -180,7 +181,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const tokenBadge = document.getElementById('tokenBadge');
         const tokenStatusText = document.getElementById('tokenStatusText');
         if (tokenBadge && tokenStatusText) {
-          if (data.source === 'tinkoff') {
+          if (data.fromCache) {
+            tokenBadge.className = 'token-badge active';
+            tokenStatusText.textContent = `Кэш IndexedDB (${data.totalCached || data.candles.length} баров)`;
+          } else if (data.source === 'tinkoff') {
             tokenBadge.className = 'token-badge active';
             tokenStatusText.textContent = 'Т-Инвестиции онлайн';
           } else {

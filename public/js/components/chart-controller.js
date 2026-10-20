@@ -1,6 +1,7 @@
 // components/chart-controller.js - Chart Controller Component (OpenAlgo & Lightweight Charts)
 import { eventBus } from '../core/event-bus.js';
 import { API } from '../api.js';
+import { marketDataService } from '../services/market-data.service.js';
 import { showToast } from '../core/utils.js';
 
 export class ChartControllerComponent {
@@ -170,7 +171,7 @@ export class ChartControllerComponent {
             return;
           }
 
-          const data = await API.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), this.store.get('currentTimeframe'), 500, oldest - 1);
+          const data = await marketDataService.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), this.store.get('currentTimeframe'), 500, oldest - 1);
           if (data && data.candles && data.candles.length > 0) {
             const before = this.chart.getVisibleLogicalRange();
             const inserted = sim.prependHistory(data.candles);

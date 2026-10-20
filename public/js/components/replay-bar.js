@@ -1,6 +1,7 @@
 // components/replay-bar.js - Floating Replay Transport Bar & Date Picker Component
 import { eventBus } from '../core/event-bus.js';
 import { API } from '../api.js';
+import { marketDataService } from '../services/market-data.service.js';
 import { formatTimestamp, timeframeToSeconds, showToast } from '../core/utils.js';
 
 export class ReplayBarComponent {
@@ -323,7 +324,7 @@ export class ReplayBarComponent {
     const toSec = targetSec + Math.max(350 * step, 7 * 86400);
 
     try {
-      const data = await API.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), tf, 1000, toSec);
+      const data = await marketDataService.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), tf, 1000, toSec);
       if (data && data.candles && data.candles.length > 0) {
         const newEarliest = data.candles[0].time;
         const newLatest = data.candles[data.candles.length - 1].time;
