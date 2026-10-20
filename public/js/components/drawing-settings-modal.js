@@ -99,6 +99,7 @@ export class DrawingSettingsModalComponent {
       'horizontal-line': 'Горизонтальный уровень',
       'horizontal-ray': 'Горизонтальный луч',
       'trend-line': 'Трендовая линия',
+      'path': 'Траектория',
       'parallel-channel': 'Параллельный канал',
       'fib-retracement': 'Коррекция Фибоначчи',
       'rectangle': 'Прямоугольник',

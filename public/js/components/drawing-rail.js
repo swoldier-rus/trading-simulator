@@ -50,34 +50,55 @@ export class DrawingRailComponent {
     eventBus.on('tool:reset', () => {
       this.resetToCursor();
     });
+
+    // Finish multi-point tools like Path on Enter key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const dc = this.store.drawingController;
+        if (dc && typeof dc.finish === 'function' && dc.activeTool() === 'path') {
+          dc.finish();
+        }
+      }
+    });
+
+    // Reset toolbar button to cursor when drawing finishes
+    if (this.store.chart && typeof this.store.chart.on === 'function') {
+      this.store.chart.on('draw:tool', (data) => {
+        if (!data || !data.tool) {
+          this.resetToCursor();
+        }
+      });
+    }
+  }
+
+  highlightTool(tool) {
+    this.leftToolButtons.forEach(b => b.classList.remove('active'));
+    const targetBtn = Array.from(this.leftToolButtons).find(b => b.getAttribute('data-tool') === (tool || 'cursor'));
+    if (targetBtn) targetBtn.classList.add('active');
+    if (this.chartEl) this.chartEl.style.cursor = (tool && tool !== 'cursor') ? 'crosshair' : 'default';
   }
 
   selectTool(tool, activeBtn = null) {
-    this.leftToolButtons.forEach(b => b.classList.remove('active'));
-    if (activeBtn) {
-      activeBtn.classList.add('active');
-    } else {
-      const targetBtn = Array.from(this.leftToolButtons).find(b => b.getAttribute('data-tool') === tool);
-      if (targetBtn) targetBtn.classList.add('active');
-    }
+    this.highlightTool(tool);
 
     if (!this.store.drawingController) return;
 
     if (tool === 'cursor') {
-      this.store.drawingController.setTool(null);
-      if (this.chartEl) this.chartEl.style.cursor = 'default';
+      if (this.store.drawingController.activeTool() !== null) {
+        this.store.drawingController.setTool(null);
+      }
     } else {
       if (this.store.floatingDrawingToolbar) {
         const def = this.store.floatingDrawingToolbar.getDefaultStyle(tool);
         this.store.drawingController.setOptions({ defaultStyle: def });
       }
-      this.store.drawingController.setTool(tool);
-      if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
+      if (this.store.drawingController.activeTool() !== tool) {
+        this.store.drawingController.setTool(tool);
+      }
     }
   }
 
   resetToCursor() {
-    const cursorBtn = document.getElementById('toolCursor');
-    this.selectTool('cursor', cursorBtn);
+    this.highlightTool('cursor');
   }
 }

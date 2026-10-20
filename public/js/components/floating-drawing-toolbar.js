@@ -144,6 +144,7 @@ export class FloatingDrawingToolbarComponent {
       'horizontal-line': 'Уровень',
       'horizontal-ray': 'Луч',
       'trend-line': 'Линия',
+      'path': 'Траектория',
       'parallel-channel': 'Канал',
       'fib-retracement': 'Фибо',
       'rectangle': 'Прямоугольник',
@@ -543,6 +544,9 @@ export class FloatingDrawingToolbarComponent {
   getDefaultStyle(tool) {
     if (this.defaultStyles && this.defaultStyles[tool]) {
       return { ...this.defaultStyles[tool] };
+    }
+    if (tool === 'path') {
+      return { color: '#2962ff', lineWidth: 2, lineStyle: 'solid', showLabels: true };
     }
     return { color: '#2962ff', lineWidth: 1, lineStyle: 'solid', showLabels: true };
   }
