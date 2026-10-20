@@ -83,46 +83,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toolClearDrawings = document.getElementById('toolClearDrawings');
   const btnFullscreen = document.getElementById('btnFullscreen');
 
-  // Header Quick Trade Buttons
-  const btnQuickSell = document.getElementById('btnQuickSell');
-  const btnQuickBuy = document.getElementById('btnQuickBuy');
-  const quickSellPrice = document.getElementById('quickSellPrice');
-  const quickBuyPrice = document.getElementById('quickBuyPrice');
+  // TradingView Right Side Order Panel Elements
+  const tvOrderPanel = document.getElementById('tvOrderPanel');
+  const btnToggleOrderPanel = document.getElementById('btnToggleOrderPanel');
+  const btnCloseOrderPanel = document.getElementById('btnCloseOrderPanel');
+  const tabNavOrder = document.getElementById('tabNavOrder');
+  const tabNavDOM = document.getElementById('tabNavDOM');
 
-  // Bottom Trading Dock Elements
-  const bottomTabs = document.querySelectorAll('.bottom-tab');
-  const positionsView = document.getElementById('positionsView');
-  const ordersView = document.getElementById('ordersView');
-  const tradesView = document.getElementById('tradesView');
-  const analyticsView = document.getElementById('analyticsView');
-  const badgePositions = document.getElementById('badgePositions');
-  const badgeOrders = document.getElementById('badgeOrders');
-  const badgeTrades = document.getElementById('badgeTrades');
-  const btnCloseAllPositions = document.getElementById('btnCloseAllPositions');
-  const btnCancelAllOrders = document.getElementById('btnCancelAllOrders');
-  const btnExportCsv = document.getElementById('btnExportCsv');
-  const btnResetAccount = document.getElementById('btnResetAccount');
+  // Direction toggle
+  const btnDirectionSell = document.getElementById('btnDirectionSell');
+  const btnDirectionBuy = document.getElementById('btnDirectionBuy');
+  const panelSellPrice = document.getElementById('panelSellPrice');
+  const panelBuyPrice = document.getElementById('panelBuyPrice');
+  const panelSpreadBadge = document.getElementById('panelSpreadBadge');
 
-  // Metrics Elements
-  const metricBalance = document.getElementById('metricBalance');
-  const metricEquity = document.getElementById('metricEquity');
-  const metricPnL = document.getElementById('metricPnL');
-  const metricWinrate = document.getElementById('metricWinrate');
-
-  // Order Entry Elements
-  const orderTypeBtns = document.querySelectorAll('.order-type-btn');
+  // Order Types
+  const panelTypeBtns = document.querySelectorAll('.panel-type-btn');
   const rowLimitPrice = document.getElementById('rowLimitPrice');
   const inputLimitPrice = document.getElementById('inputLimitPrice');
+
+  // Lots / Quantity
   const inputLots = document.getElementById('inputLots');
   const lotsInfoText = document.getElementById('lotsInfoText');
-  const inputSL = document.getElementById('inputSL');
-  const inputTP = document.getElementById('inputTP');
+  const panelLotEquivVal = document.getElementById('panelLotEquivVal');
+  const panelChips = document.querySelectorAll('.panel-chip[data-lots]');
+
+  // Summary Metrics
   const rrNotional = document.getElementById('rrNotional');
-  const rrRisk = document.getElementById('rrRisk');
+  const panelAvailMargin = document.getElementById('panelAvailMargin');
+  const panelTickValue = document.getElementById('panelTickValue');
+
+  // Exit Levels (Collapsible)
+  const btnToggleExitLevels = document.getElementById('btnToggleExitLevels');
+  const sectionExitLevels = document.getElementById('sectionExitLevels');
+  const toggleTP = document.getElementById('toggleTP');
+  const boxTP = document.getElementById('boxTP');
+  const inputTP = document.getElementById('inputTP');
   const rrReward = document.getElementById('rrReward');
+
+  const toggleSL = document.getElementById('toggleSL');
+  const boxSL = document.getElementById('boxSL');
+  const inputSL = document.getElementById('inputSL');
+  const rrRisk = document.getElementById('rrRisk');
+  const rowRRRatio = document.getElementById('rowRRRatio');
   const rrRatio = document.getElementById('rrRatio');
-  const btnPanelBuy = document.getElementById('btnPanelBuy');
-  const btnPanelSell = document.getElementById('btnPanelSell');
+
+  // Extra Settings Collapsible
+  const btnToggleExtraSettings = document.getElementById('btnToggleExtraSettings');
+  const sectionExtraSettings = document.getElementById('sectionExtraSettings');
+
+  // Big Action Submit Button
+  const btnPanelSubmit = document.getElementById('btnPanelSubmit');
+  const submitActionWord = document.getElementById('submitActionWord');
+  const submitActionDesc = document.getElementById('submitActionDesc');
+
+  let currentSelectedSide = 'BUY'; // 'BUY' or 'SELL'
 
   // Tables Bodies
   const positionsTableBody = document.getElementById('positionsTableBody');
@@ -1391,8 +1406,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const lots = Number(inputLots.value) || 1;
-    const sl = inputSL.value ? Number(inputSL.value) : null;
-    const tp = inputTP.value ? Number(inputTP.value) : null;
+    const hasSL = toggleSL ? toggleSL.checked : !!(inputSL && inputSL.value);
+    const hasTP = toggleTP ? toggleTP.checked : !!(inputTP && inputTP.value);
+
+    const sl = (hasSL && inputSL && inputSL.value) ? Number(inputSL.value) : null;
+    const tp = (hasTP && inputTP && inputTP.value) ? Number(inputTP.value) : null;
     let orderPrice = currentBar.close;
 
     if (selectedOrderType !== 'MARKET') {
@@ -1426,13 +1444,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Quick trade buttons in header
-  btnQuickBuy.onclick = () => executeTrade('BUY');
-  btnQuickSell.onclick = () => executeTrade('SELL');
+  // Direction Selection (Sell / Buy) in Side Order Panel
+  function setSelectedSide(side) {
+    currentSelectedSide = side;
+    if (btnDirectionBuy && btnDirectionSell) {
+      btnDirectionBuy.classList.toggle('active', side === 'BUY');
+      btnDirectionSell.classList.toggle('active', side === 'SELL');
+    }
+    if (btnPanelSubmit) {
+      btnPanelSubmit.className = `btn-panel-submit ${side === 'BUY' ? 'buy' : 'sell'}`;
+    }
+    if (submitActionWord) {
+      submitActionWord.textContent = side === 'BUY' ? 'Купить' : 'Продать';
+    }
+    updateSubmitButtonDesc();
+    updateRiskRewardPreview();
+  }
 
-  // Bottom panel trade buttons
-  btnPanelBuy.onclick = () => executeTrade('BUY');
-  btnPanelSell.onclick = () => executeTrade('SELL');
+  if (btnDirectionBuy) btnDirectionBuy.onclick = () => setSelectedSide('BUY');
+  if (btnDirectionSell) btnDirectionSell.onclick = () => setSelectedSide('SELL');
+
+  // Big Bottom Submit Button
+  if (btnPanelSubmit) {
+    btnPanelSubmit.onclick = () => executeTrade(currentSelectedSide);
+  }
 
   // Close all / Cancel all
   btnCloseAllPositions.onclick = () => {
@@ -1476,24 +1511,130 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // Order type buttons (Market / Limit / Stop)
-  orderTypeBtns.forEach(btn => {
+  panelTypeBtns.forEach(btn => {
     btn.onclick = () => {
-      orderTypeBtns.forEach(b => b.classList.remove('active'));
+      panelTypeBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedOrderType = btn.getAttribute('data-order-type');
 
       if (selectedOrderType === 'MARKET') {
-        rowLimitPrice.style.display = 'none';
+        if (rowLimitPrice) rowLimitPrice.style.display = 'none';
       } else {
-        rowLimitPrice.style.display = 'flex';
+        if (rowLimitPrice) rowLimitPrice.style.display = 'flex';
         const currentBar = simulator.getCurrentBar();
         if (currentBar && (!inputLimitPrice.value || inputLimitPrice.value === '0')) {
-          inputLimitPrice.value = currentBar.close;
+          inputLimitPrice.value = currentBar.close.toFixed(2);
+        }
+      }
+      updateSubmitButtonDesc();
+      updateRiskRewardPreview();
+    };
+  });
+
+  // Toggle Order Panel visibility
+  function setOrderPanelVisible(visible) {
+    if (!tvOrderPanel) return;
+    if (visible) {
+      tvOrderPanel.classList.remove('collapsed');
+      if (btnToggleOrderPanel) btnToggleOrderPanel.classList.add('active');
+    } else {
+      tvOrderPanel.classList.add('collapsed');
+      if (btnToggleOrderPanel) btnToggleOrderPanel.classList.remove('active');
+    }
+    window.dispatchEvent(new Event('resize'));
+  }
+
+  if (btnToggleOrderPanel) {
+    btnToggleOrderPanel.onclick = () => {
+      const isCollapsed = tvOrderPanel.classList.contains('collapsed');
+      setOrderPanelVisible(isCollapsed);
+    };
+  }
+  if (btnCloseOrderPanel) {
+    btnCloseOrderPanel.onclick = () => setOrderPanelVisible(false);
+  }
+
+  // Exit Levels Toggles
+  if (toggleTP) {
+    toggleTP.onchange = () => {
+      const enabled = toggleTP.checked;
+      if (boxTP) {
+        boxTP.style.opacity = enabled ? '1' : '0.45';
+        boxTP.style.pointerEvents = enabled ? 'auto' : 'none';
+      }
+      if (inputTP) {
+        inputTP.disabled = !enabled;
+        if (enabled && !inputTP.value) {
+          const cur = simulator.getCurrentBar() ? simulator.getCurrentBar().close : 0;
+          if (cur > 0) {
+            const tpSuggest = currentSelectedSide === 'BUY' ? cur * 1.02 : cur * 0.98;
+            inputTP.value = tpSuggest.toFixed(2);
+          }
         }
       }
       updateRiskRewardPreview();
     };
+  }
+
+  if (toggleSL) {
+    toggleSL.onchange = () => {
+      const enabled = toggleSL.checked;
+      if (boxSL) {
+        boxSL.style.opacity = enabled ? '1' : '0.45';
+        boxSL.style.pointerEvents = enabled ? 'auto' : 'none';
+      }
+      if (inputSL) {
+        inputSL.disabled = !enabled;
+        if (enabled && !inputSL.value) {
+          const cur = simulator.getCurrentBar() ? simulator.getCurrentBar().close : 0;
+          if (cur > 0) {
+            const slSuggest = currentSelectedSide === 'BUY' ? cur * 0.99 : cur * 1.01;
+            inputSL.value = slSuggest.toFixed(2);
+          }
+        }
+      }
+      updateRiskRewardPreview();
+    };
+  }
+
+  // Quick Lots Chips
+  panelChips.forEach(chip => {
+    chip.onclick = () => {
+      panelChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const lots = Number(chip.getAttribute('data-lots')) || 1;
+      inputLots.value = lots;
+      updateLotsDisplay();
+      updateRiskRewardPreview();
+    };
   });
+
+  // Collapsible Sections
+  if (btnToggleExitLevels && sectionExitLevels) {
+    btnToggleExitLevels.onclick = () => {
+      sectionExitLevels.classList.toggle('collapsed');
+    };
+  }
+  if (btnToggleExtraSettings && sectionExtraSettings) {
+    btnToggleExtraSettings.onclick = () => {
+      sectionExtraSettings.classList.toggle('collapsed');
+    };
+  }
+
+  function updateSubmitButtonDesc() {
+    const lots = Number(inputLots.value) || 1;
+    let typeName = 'МАРКЕТНАЯ';
+    if (selectedOrderType === 'LIMIT') {
+      const pr = Number(inputLimitPrice.value) || 0;
+      typeName = pr > 0 ? `ЛИМИТ @ ${formatRussianPrice(pr)}` : 'ЛИМИТНАЯ';
+    } else if (selectedOrderType === 'STOP') {
+      const pr = Number(inputLimitPrice.value) || 0;
+      typeName = pr > 0 ? `СТОП @ ${formatRussianPrice(pr)}` : 'СТОП';
+    }
+    if (submitActionDesc) {
+      submitActionDesc.textContent = `${lots} ${currentSymbol} ${typeName}`;
+    }
+  }
 
   // Calculate and preview Risk / Reward in real-time
   function updateRiskRewardPreview() {
@@ -1504,25 +1645,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     const entryPrice = selectedOrderType === 'MARKET' ? currentPrice : (Number(inputLimitPrice.value) || currentPrice);
 
     const notional = totalShares * entryPrice;
-    rrNotional.textContent = `${formatMoney(notional)}`;
+    if (rrNotional) rrNotional.textContent = formatMoney(notional);
+    if (panelLotEquivVal) panelLotEquivVal.textContent = formatMoney(notional);
 
-    const sl = Number(inputSL.value);
-    const tp = Number(inputTP.value);
+    if (panelAvailMargin && paperAccount) {
+      panelAvailMargin.textContent = formatMoney(paperAccount.balance);
+    }
+
+    const hasSL = toggleSL ? toggleSL.checked : !!(inputSL && inputSL.value);
+    const hasTP = toggleTP ? toggleTP.checked : !!(inputTP && inputTP.value);
+
+    const sl = hasSL ? Number(inputSL.value) : 0;
+    const tp = hasTP ? Number(inputTP.value) : 0;
 
     if (sl && sl > 0) {
       const riskPerShare = Math.abs(entryPrice - sl);
       const totalRisk = riskPerShare * totalShares;
-      rrRisk.textContent = `-${formatMoney(totalRisk)}`;
+      const pct = entryPrice > 0 ? ((riskPerShare / entryPrice) * 100).toFixed(1) : '0';
+      if (rrRisk) rrRisk.textContent = `-${formatMoney(totalRisk)} (-${pct}%)`;
     } else {
-      rrRisk.textContent = '— ₽';
+      if (rrRisk) rrRisk.textContent = '— ₽';
     }
 
     if (tp && tp > 0) {
       const rewardPerShare = Math.abs(tp - entryPrice);
       const totalReward = rewardPerShare * totalShares;
-      rrReward.textContent = `+${formatMoney(totalReward)}`;
+      const pct = entryPrice > 0 ? ((rewardPerShare / entryPrice) * 100).toFixed(1) : '0';
+      if (rrReward) rrReward.textContent = `+${formatMoney(totalReward)} (+${pct}%)`;
     } else {
-      rrReward.textContent = '— ₽';
+      if (rrReward) rrReward.textContent = '— ₽';
     }
 
     if (sl && tp && sl > 0 && tp > 0) {
@@ -1530,13 +1681,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const rewardPerShare = Math.abs(tp - entryPrice);
       if (riskPerShare > 0) {
         const ratio = (rewardPerShare / riskPerShare).toFixed(1);
-        rrRatio.textContent = `1 : ${ratio}`;
+        if (rrRatio) rrRatio.textContent = `1 : ${ratio}`;
+        if (rowRRRatio) rowRRRatio.style.display = 'flex';
       } else {
-        rrRatio.textContent = '—';
+        if (rowRRRatio) rowRRRatio.style.display = 'none';
       }
     } else {
-      rrRatio.textContent = '—';
+      if (rowRRRatio) rowRRRatio.style.display = 'none';
     }
+
+    updateSubmitButtonDesc();
   }
 
   inputLots.oninput = () => {
@@ -1544,12 +1698,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateRiskRewardPreview();
   };
   inputLimitPrice.oninput = updateRiskRewardPreview;
-  inputSL.oninput = updateRiskRewardPreview;
-  inputTP.oninput = updateRiskRewardPreview;
+  if (inputSL) inputSL.oninput = updateRiskRewardPreview;
+  if (inputTP) inputTP.oninput = updateRiskRewardPreview;
 
   function updateLotsDisplay() {
     const lots = Number(inputLots.value) || 1;
-    lotsInfoText.textContent = `${lots * currentLotSize} шт.`;
+    if (lotsInfoText) lotsInfoText.textContent = `${lots * currentLotSize} шт.`;
+    // Update chip active class if matches
+    panelChips.forEach(c => {
+      c.classList.toggle('active', Number(c.getAttribute('data-lots')) === lots);
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -2057,8 +2215,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateQuickPrices(closePrice) {
     if (!closePrice) return;
-    quickSellPrice.textContent = `${closePrice.toFixed(2)} ₽`;
-    quickBuyPrice.textContent = `${closePrice.toFixed(2)} ₽`;
+    if (panelSellPrice) panelSellPrice.textContent = formatRussianPrice(closePrice);
+    if (panelBuyPrice) panelBuyPrice.textContent = formatRussianPrice(closePrice);
+    if (panelSpreadBadge) panelSpreadBadge.textContent = '0,00';
     updateRiskRewardPreview();
   }
 

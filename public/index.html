@@ -93,15 +93,13 @@
       </div>
     </div>
 
-    <!-- Center: Quick Trade Buttons -->
+    <!-- Center: Order Panel Toggle Button -->
     <div class="tv-header-center">
-      <button class="quick-order-btn btn-sell" id="btnQuickSell" title="Быстрая продажа (Short) по текущей исторической цене">
-        <span>Продать</span>
-        <span class="quick-price" id="quickSellPrice">—</span>
-      </button>
-      <button class="quick-order-btn btn-buy" id="btnQuickBuy" title="Быстрая покупка (Long) по текущей исторической цене">
-        <span>Купить</span>
-        <span class="quick-price" id="quickBuyPrice">—</span>
+      <button class="tv-btn tv-btn-order-panel active" id="btnToggleOrderPanel" title="Открыть / скрыть панель заявок (TradingView Order Panel)">
+        <svg width="15" height="15" viewBox="0 0 28 28" fill="currentColor">
+          <path d="M5.5 20c1.2 0 2.22.86 2.45 2H25v1H7.95a2.5 2.5 0 1 1-2.45-3m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M25 18H5v-1h20zm-11-4h3v1h-4V9h1zM5.5 4c1.2 0 2.22.86 2.45 2H25v1H7.95A2.5 2.5 0 1 1 5.5 4m0 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path>
+        </svg>
+        <span>Панель заявок</span>
       </button>
     </div>
 
@@ -354,6 +352,180 @@
           </div>
         </div>
       </div>
+
+      <!-- Right Side TradingView Order Panel (Matching User's Screenshot) -->
+      <aside class="tv-order-panel" id="tvOrderPanel">
+        <!-- Top Nav Tabs: [ Заявка ] [ DOM — Стакан заявок ] [ ✕ ] -->
+        <div class="panel-top-nav">
+          <div class="panel-nav-pills">
+            <button type="button" class="panel-nav-pill active" id="tabNavOrder">Заявка</button>
+            <button type="button" class="panel-nav-pill" id="tabNavDOM">DOM — Стакан заявок</button>
+          </div>
+          <button type="button" class="panel-close-btn" id="btnCloseOrderPanel" title="Скрыть панель заявок">✕</button>
+        </div>
+
+        <!-- Direction / Split Price Box -->
+        <div class="panel-direction-split">
+          <button type="button" class="direction-box direction-sell" id="btnDirectionSell">
+            <span class="dir-title">Продать</span>
+            <span class="dir-price" id="panelSellPrice">289,50</span>
+          </button>
+          <div class="direction-spread-badge" id="panelSpreadBadge">0,00</div>
+          <button type="button" class="direction-box direction-buy active" id="btnDirectionBuy">
+            <span class="dir-title">Купить</span>
+            <span class="dir-price" id="panelBuyPrice">289,50</span>
+          </button>
+        </div>
+
+        <!-- Order Type Tabs (Underline): Рынок | Лимит | Стоп -->
+        <div class="panel-type-tabs">
+          <button type="button" class="panel-type-btn active" data-order-type="MARKET">Рынок</button>
+          <button type="button" class="panel-type-btn" data-order-type="LIMIT">Лимит</button>
+          <button type="button" class="panel-type-btn" data-order-type="STOP">Стоп</button>
+        </div>
+
+        <!-- Scrollable Order Settings Body -->
+        <div class="panel-body-scroll">
+          
+          <!-- Limit/Stop Price Input (shown only for LIMIT and STOP) -->
+          <div class="panel-group" id="rowLimitPrice" style="display: none;">
+            <div class="panel-group-header">
+              <span class="panel-group-title">Цена заявки</span>
+              <span class="panel-group-sub" id="limitPriceStepText">Шаг 0.05 ₽</span>
+            </div>
+            <div class="panel-input-box">
+              <input type="number" class="panel-num-input" id="inputLimitPrice" placeholder="0.00" step="0.05">
+              <span class="panel-input-suffix" id="panelLimitCurrency">₽</span>
+            </div>
+          </div>
+
+          <!-- Quantity / Lots Input Row -->
+          <div class="panel-group">
+            <div class="panel-group-header">
+              <div class="panel-dropdown-tag">
+                <span id="qtyUnitLabel">Лоты</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+              </div>
+              <span class="panel-shares-info" id="lotsInfoText">10 шт.</span>
+            </div>
+
+            <div class="panel-input-box">
+              <input type="number" class="panel-num-input" id="inputLots" value="1" min="1" max="100000" step="1">
+              <span class="panel-swap-icon" title="Эквивалентная стоимость">⇄</span>
+              <span class="panel-equiv-value" id="panelLotEquivVal">2 895,00 ₽</span>
+            </div>
+
+            <!-- Quick Lots Chips -->
+            <div class="panel-chips-row">
+              <button type="button" class="panel-chip active" data-lots="1">1</button>
+              <button type="button" class="panel-chip" data-lots="5">5</button>
+              <button type="button" class="panel-chip" data-lots="10">10</button>
+              <button type="button" class="panel-chip" data-lots="30">30</button>
+              <button type="button" class="panel-chip" data-lots="50">50</button>
+              <button type="button" class="panel-chip" data-lots="100">100</button>
+            </div>
+          </div>
+
+          <!-- Summary info rows (Matching user screenshot) -->
+          <div class="panel-summary-section">
+            <div class="summary-row">
+              <span class="summary-lbl">Сумма сделки</span>
+              <span class="summary-val" id="rrNotional">2 895,00 ₽</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-lbl">Доступная маржа</span>
+              <span class="summary-val" id="panelAvailMargin">100 000,00 ₽</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-lbl">Значение тика</span>
+              <span class="summary-val" id="panelTickValue">0,01 ₽</span>
+            </div>
+          </div>
+
+          <!-- Collapsible: Уровни выхода (Exit Levels: TP & SL) -->
+          <div class="panel-collapsible active" id="sectionExitLevels">
+            <div class="collapsible-header" id="btnToggleExitLevels">
+              <span class="collapsible-title">Уровни выхода</span>
+              <svg class="collapsible-arrow" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 14l5-5 5 5z"/>
+              </svg>
+            </div>
+
+            <div class="collapsible-content">
+              <!-- Take Profit row -->
+              <div class="exit-level-block">
+                <div class="exit-level-head">
+                  <div class="exit-level-lbl">
+                    <span>Тейк-профит цена</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                  </div>
+                  <!-- iOS / TradingView Switch -->
+                  <label class="tv-toggle-switch" title="Включить / выключить Take Profit">
+                    <input type="checkbox" id="toggleTP">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="panel-input-box" id="boxTP" style="opacity: 0.45; pointer-events: none;">
+                  <input type="number" class="panel-num-input" id="inputTP" placeholder="0.00" step="0.05" disabled>
+                  <span class="panel-swap-icon">⇄</span>
+                  <span class="panel-equiv-value text-positive" id="rrReward">+0,00 ₽</span>
+                </div>
+              </div>
+
+              <!-- Stop Loss row -->
+              <div class="exit-level-block">
+                <div class="exit-level-head">
+                  <div class="exit-level-lbl">
+                    <span>Стоп-лосс цена</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                  </div>
+                  <label class="tv-toggle-switch" title="Включить / выключить Stop Loss">
+                    <input type="checkbox" id="toggleSL">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="panel-input-box" id="boxSL" style="opacity: 0.45; pointer-events: none;">
+                  <input type="number" class="panel-num-input" id="inputSL" placeholder="0.00" step="0.05" disabled>
+                  <span class="panel-swap-icon">⇄</span>
+                  <span class="panel-equiv-value text-negative" id="rrRisk">-0,00 ₽</span>
+                </div>
+              </div>
+
+              <!-- Risk / Reward ratio -->
+              <div class="rr-ratio-row" id="rowRRRatio" style="display: none;">
+                <span class="summary-lbl">Соотношение R:R</span>
+                <span class="summary-val" id="rrRatio">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Collapsible: Дополнительные настройки -->
+          <div class="panel-collapsible active" id="sectionExtraSettings">
+            <div class="collapsible-header" id="btnToggleExtraSettings">
+              <span class="collapsible-title">Дополнительные настройки</span>
+              <svg class="collapsible-arrow" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 14l5-5 5 5z"/>
+              </svg>
+            </div>
+            <div class="collapsible-content">
+              <label class="panel-checkbox-label">
+                <input type="checkbox" id="chkFillExtendedHours">
+                <span>Заполнять тейк-профит вне регулярной торговой сессии</span>
+                <span class="help-tooltip-icon" title="Исполнение заявок в нерабочие часы или по ценам закрытия">?</span>
+              </label>
+            </div>
+          </div>
+
+        </div> <!-- /panel-body-scroll -->
+
+        <!-- Big Bottom Submit Action Button -->
+        <div class="panel-submit-footer">
+          <button type="button" class="btn-panel-submit buy" id="btnPanelSubmit">
+            <span class="submit-action-word" id="submitActionWord">Купить</span>
+            <span class="submit-action-desc" id="submitActionDesc">1 SBER МАРКЕТНАЯ</span>
+          </button>
+        </div>
+      </aside>
     </div>
 
     <!-- Bottom Trading Panel (OpenAlgo Dock) -->
@@ -404,51 +576,6 @@
 
       <!-- Panel Content -->
       <div class="bottom-panel-content">
-        <!-- Order Entry sidebar -->
-        <div class="order-entry-sidebar">
-          <div class="order-type-tabs">
-            <button class="order-type-btn active" data-order-type="MARKET">Рыночная</button>
-            <button class="order-type-btn" data-order-type="LIMIT">Лимитная</button>
-            <button class="order-type-btn" data-order-type="STOP">Стоп</button>
-          </div>
-
-          <div class="form-row" id="rowLimitPrice" style="display: none;">
-            <span class="form-label">Цена заявки (₽):</span>
-            <input type="number" class="form-input" id="inputLimitPrice" placeholder="Цена входа" step="0.05">
-          </div>
-
-          <div class="form-row">
-            <span class="form-label">Лоты:</span>
-            <div class="lots-input-group">
-              <input type="number" class="form-input" id="inputLots" value="1" min="1" step="1">
-              <span class="lots-info-text" id="lotsInfoText">10 шт.</span>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <span class="form-label">Stop Loss:</span>
-            <input type="number" class="form-input" id="inputSL" placeholder="Опционально" step="0.05">
-          </div>
-
-          <div class="form-row">
-            <span class="form-label">Take Profit:</span>
-            <input type="number" class="form-input" id="inputTP" placeholder="Опционально" step="0.05">
-          </div>
-
-          <!-- Risk / Reward Real-time Calculation -->
-          <div class="risk-reward-box" id="riskRewardBox">
-            <div class="rr-row"><span>Объем сделки:</span><strong id="rrNotional">— ₽</strong></div>
-            <div class="rr-row"><span>Риск (SL):</span><strong class="text-negative" id="rrRisk">— ₽</strong></div>
-            <div class="rr-row"><span>Прибыль (TP):</span><strong class="text-positive" id="rrReward">— ₽</strong></div>
-            <div class="rr-row"><span>Соотношение R:R:</span><strong id="rrRatio">—</strong></div>
-          </div>
-
-          <div class="trade-actions-row">
-            <button class="btn-trade-buy" id="btnPanelBuy">Купить (Long)</button>
-            <button class="btn-trade-sell" id="btnPanelSell">Продать (Short)</button>
-          </div>
-        </div>
-
         <!-- Tables View -->
         <div class="data-table-container">
           <!-- Positions Table -->
