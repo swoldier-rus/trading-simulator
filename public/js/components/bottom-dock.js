@@ -62,6 +62,7 @@ export class BottomDockComponent {
     this.initTabs();
     this.initActionButtons();
     this.initTableDelegation();
+    this.initResizer();
 
     eventBus.on('account:update', (metrics) => {
       this.update(metrics);
@@ -73,6 +74,11 @@ export class BottomDockComponent {
       tab.onclick = () => {
         this.bottomTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
+
+        // If dock is collapsed to the header line, auto-expand to show content
+        if (this.bottomPanel && this.bottomPanel.offsetHeight <= this.minHeight + 2) {
+          this.setHeight(Math.max(120, this.lastExpandedHeight || this.defaultHeight));
+        }
 
         const target = tab.getAttribute('data-tab');
         this.activeTab = target;
@@ -478,5 +484,173 @@ export class BottomDockComponent {
     if (this.statAvgLoss) this.statAvgLoss.textContent = `-${m.avgLoss.toFixed(2)} ₽`;
     if (this.statReturnPct) this.statReturnPct.textContent = `${m.returnPct >= 0 ? '+' : ''}${m.returnPct.toFixed(2)}%`;
     if (this.statInitialCapital) this.statInitialCapital.textContent = `Стартовый капитал: ${formatMoney(m.initialBalance)}`;
+  }
+
+  // --- TradingView-style Vertical Panel Resizer ---
+  initResizer() {
+    this.bottomPanel = document.getElementById('tvBottomPanel') || document.querySelector('.tv-bottom-panel');
+    this.panelResizer = document.getElementById('bottomPanelResizer');
+    this.bottomHeader = document.querySelector('.bottom-panel-header');
+
+    if (!this.bottomPanel || !this.panelResizer) return;
+
+    this.headerHeight = 36; // Exact height of the tab bar header & active blue line
+    this.minHeight = this.headerHeight; // Cannot shrink smaller than this line
+    this.defaultHeight = 210;
+    this.lastExpandedHeight = 210;
+
+    // Restore saved height and state from localStorage
+    this.restoreSavedHeight();
+
+    let isDragging = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    const onPointerDown = (e) => {
+      if (e.button !== 0) return; // Only primary mouse button
+      e.preventDefault();
+      e.stopPropagation();
+
+      isDragging = true;
+      startY = e.clientY;
+      startHeight = this.bottomPanel.offsetHeight;
+
+      this.bottomPanel.classList.add('resizing');
+      this.panelResizer.classList.add('active');
+      document.body.classList.add('resizing-dock');
+
+      try {
+        if (this.panelResizer.setPointerCapture) {
+          this.panelResizer.setPointerCapture(e.pointerId);
+        }
+      } catch (err) {}
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+
+      const deltaY = startY - e.clientY; // Dragging UP increases height
+      let newHeight = startHeight + deltaY;
+
+      // Minimum constraint: "эта же линия ограничивает уменьшение" (cannot be smaller than 36px header)
+      const maxHeight = Math.max(120, window.innerHeight - 120);
+      newHeight = Math.max(this.minHeight, Math.min(maxHeight, newHeight));
+
+      this.setHeight(newHeight, false);
+    };
+
+    const onPointerUp = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      this.bottomPanel.classList.remove('resizing');
+      this.panelResizer.classList.remove('active');
+      document.body.classList.remove('resizing-dock');
+
+      try {
+        if (this.panelResizer.releasePointerCapture && e.pointerId !== undefined) {
+          this.panelResizer.releasePointerCapture(e.pointerId);
+        }
+      } catch (err) {}
+
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      this.saveHeight();
+    };
+
+    this.panelResizer.addEventListener('pointerdown', onPointerDown);
+
+    // Double-click on resizer line to toggle collapse / expand
+    this.panelResizer.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      this.toggleCollapse();
+    });
+
+    // Double-click on header background (excluding buttons) to toggle collapse
+    if (this.bottomHeader) {
+      this.bottomHeader.addEventListener('dblclick', (e) => {
+        if (e.target.closest('button, .metric-item, .dock-tab-badge')) return;
+        this.toggleCollapse();
+      });
+    }
+  }
+
+  setHeight(height, save = true) {
+    if (!this.bottomPanel) return;
+
+    const maxHeight = Math.max(120, window.innerHeight - 120);
+    const h = Math.max(this.minHeight, Math.min(maxHeight, Math.round(height)));
+    this.bottomPanel.style.height = `${h}px`;
+
+    const isCollapsed = h <= this.minHeight + 2;
+    this.bottomPanel.classList.toggle('collapsed', isCollapsed);
+
+    if (!isCollapsed) {
+      this.lastExpandedHeight = h;
+    }
+
+    if (save) {
+      this.saveHeight();
+    }
+
+    // Synchronize chart canvas size immediately
+    const chartEl = document.getElementById('chart');
+    if (this.store.chart && chartEl) {
+      const w = chartEl.clientWidth;
+      const ch = chartEl.clientHeight;
+      if (w > 0 && ch > 0) {
+        this.store.chart.applySize(w, ch);
+      }
+    }
+  }
+
+  toggleCollapse() {
+    if (!this.bottomPanel) return;
+    if (this.bottomPanel.offsetHeight <= this.minHeight + 2) {
+      const targetH = Math.max(120, this.lastExpandedHeight || this.defaultHeight);
+      this.setHeight(targetH);
+      showToast('Панель развернута', 'info');
+    } else {
+      this.lastExpandedHeight = this.bottomPanel.offsetHeight;
+      this.setHeight(this.minHeight);
+      showToast('Панель свернута (нажмите на вкладку или потяните линию для раскрытия)', 'info');
+    }
+  }
+
+  saveHeight() {
+    if (!this.bottomPanel) return;
+    try {
+      const currentHeight = this.bottomPanel.offsetHeight;
+      const isCollapsed = currentHeight <= this.minHeight + 2;
+      localStorage.setItem('trading_simulator_dock_height', String(this.lastExpandedHeight || this.defaultHeight));
+      localStorage.setItem('trading_simulator_dock_collapsed', isCollapsed ? '1' : '0');
+    } catch (e) {}
+  }
+
+  restoreSavedHeight() {
+    if (!this.bottomPanel) return;
+    try {
+      const savedHeight = localStorage.getItem('trading_simulator_dock_height');
+      const isCollapsed = localStorage.getItem('trading_simulator_dock_collapsed') === '1';
+
+      if (savedHeight) {
+        const parsed = parseInt(savedHeight, 10);
+        if (!isNaN(parsed) && parsed >= this.minHeight) {
+          this.lastExpandedHeight = parsed;
+        }
+      }
+
+      if (isCollapsed) {
+        this.setHeight(this.minHeight, false);
+      } else if (this.lastExpandedHeight) {
+        this.setHeight(this.lastExpandedHeight, false);
+      }
+    } catch (e) {}
   }
 }

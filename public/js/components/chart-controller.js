@@ -193,8 +193,8 @@ export class ChartControllerComponent {
         }
       });
 
-      // Auto-resize on window resize
-      window.addEventListener('resize', () => {
+      // Auto-resize on window resize or panel layout changes
+      const handleResize = () => {
         if (this.chart && this.chartEl) {
           const w = this.chartEl.clientWidth;
           const h = this.chartEl.clientHeight;
@@ -202,7 +202,14 @@ export class ChartControllerComponent {
             this.chart.applySize(w, h);
           }
         }
-      });
+      };
+
+      window.addEventListener('resize', handleResize);
+
+      if (window.ResizeObserver && this.chartEl) {
+        this.resizeObserver = new ResizeObserver(() => handleResize());
+        this.resizeObserver.observe(this.chartEl);
+      }
 
       eventBus.on('bar:tick', (bar) => {
         this.updateLegend(bar);

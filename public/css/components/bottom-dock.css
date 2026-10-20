@@ -3,20 +3,81 @@
 /* Bottom Trading Panel */
 .tv-bottom-panel {
   height: 210px;
+  min-height: 36px;
   background-color: var(--tv-panel-bg);
   border-top: 1px solid var(--tv-border);
   display: flex;
   flex-direction: column;
   z-index: var(--z-bottom-dock, 30);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tv-bottom-panel.resizing {
+  transition: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.resizing-dock,
+body.resizing-dock * {
+  cursor: row-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.tv-bottom-panel.collapsed .bottom-panel-content {
+  display: none !important;
 }
 
 .bottom-panel-header {
   height: 36px;
+  min-height: 36px;
   border-bottom: 1px solid var(--tv-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  z-index: 5;
+}
+
+/* TradingView-style Resize Splitter Handle right on the bottom line of the tab header */
+.bottom-panel-resizer {
+  height: 8px;
+  margin-top: -4px;
+  margin-bottom: -4px;
+  position: relative;
+  z-index: 25;
+  cursor: row-resize;
+  cursor: ns-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.bottom-panel-resizer::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 2px;
+  background-color: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bottom-panel-resizer:hover::after,
+.bottom-panel-resizer.active::after,
+.tv-bottom-panel.resizing .bottom-panel-resizer::after {
+  background-color: var(--tv-accent, #2962ff);
+  box-shadow: 0 0 6px rgba(41, 98, 255, 0.7);
 }
 
 .bottom-tabs {
