@@ -193,7 +193,7 @@ export class TradeLinesOverlayComponent {
             <div class="trade-line-rail dotted"></div>
             <div class="trade-badge order-badge drag-handle" data-drag-type="order" data-order-id="${ord.id}" title="Зажмите и перетащите мышкой для изменения цены заявки">
               <span class="drag-grip">⠿</span>
-              <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'}">${ord.type} ${isLong ? 'BUY' : 'SELL'} ${ord.lots}л</span>
+              <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'} clickable" data-action="edit-order-lots" data-order-id="${ord.id}" title="Кликните, чтобы изменить количество лотов">${ord.type} ${isLong ? 'BUY' : 'SELL'} <b class="tag-lots-val">${ord.lots}л</b><span class="tag-edit-icon">✏️</span></span>
               <span class="badge-price" data-field="price">${ord.price.toFixed(2)} ₽</span>
               <span class="badge-notional">${formatMoney(notional)}</span>
               <div class="badge-actions">
@@ -371,13 +371,19 @@ export class TradeLinesOverlayComponent {
         if (ok) showToast('Заявка отменена с графика', 'info');
         break;
       }
+      case 'edit-order-lots': {
+        if (this.store.editOrderModal) {
+          this.store.editOrderModal.open(id);
+        }
+        break;
+      }
     }
   }
 
   // --- Modern Drag & Drop via Pointer Events ---
   handleDragStart(e, handle) {
     if (e.button !== 0) return; // Only primary button
-    if (e.target.closest('button')) return; // Ignore clicks on action buttons inside the badge
+    if (e.target.closest('button') || e.target.closest('[data-action]')) return; // Ignore clicks on action buttons/tags inside the badge
 
     e.preventDefault();
     e.stopPropagation();

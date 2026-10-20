@@ -21,6 +21,7 @@ import { TradeLinesOverlayComponent } from './components/trade-lines-overlay.js'
 import { QuickTradeWidgetComponent } from './components/quick-trade-widget.js';
 import { FloatingDrawingToolbarComponent } from './components/floating-drawing-toolbar.js';
 import { DrawingSettingsModalComponent } from './components/drawing-settings-modal.js';
+import { EditOrderModalComponent } from './components/edit-order-modal.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -43,11 +44,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const quickTradeWidget = new QuickTradeWidgetComponent(store);
   const drawingSettingsModal = new DrawingSettingsModalComponent(store);
   const floatingDrawingToolbar = new FloatingDrawingToolbarComponent(store);
+  const editOrderModal = new EditOrderModalComponent(store);
 
   store.tradeLinesOverlay = tradeLinesOverlay;
   store.quickTradeWidget = quickTradeWidget;
   store.drawingSettingsModal = drawingSettingsModal;
   store.floatingDrawingToolbar = floatingDrawingToolbar;
+  store.editOrderModal = editOrderModal;
   store.indicatorManager = new IndicatorManager(store.chart);
 
   // 3. Connect Paper Trading Account Listeners
@@ -304,6 +307,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (store.floatingDrawingToolbar) {
         store.floatingDrawingToolbar.closeAllPopups();
       }
+      if (store.editOrderModal) {
+        store.editOrderModal.close();
+      }
       const datePickerModal = document.getElementById('datePickerModal');
       if (datePickerModal) datePickerModal.classList.remove('open');
       const startPointMenu = document.getElementById('startPointMenu');
@@ -333,7 +339,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       replayBar,
       modals,
       drawingSettingsModal,
-      floatingDrawingToolbar
+      floatingDrawingToolbar,
+      editOrderModal
     },
     loadCandles,
     prefetchSubsequentBars

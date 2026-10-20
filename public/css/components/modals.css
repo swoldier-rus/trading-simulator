@@ -207,3 +207,26 @@
   accent-color: var(--tv-accent);
   cursor: pointer;
 }
+
+/* Edit Order Modal Custom Styles */
+.edit-order-summary-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--tv-border);
+  font-size: 13px;
+}
+
+.edit-order-type {
+  font-weight: 600;
+  color: #fff;
+}
+
+.edit-order-price {
+  color: var(--tv-text-muted);
+  font-family: monospace;
+  font-size: 13px;
+}

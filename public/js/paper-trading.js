@@ -321,18 +321,32 @@ class PaperTradingAccount {
     return count;
   }
 
-  // Modify limit/stop order price (e.g. from chart drag)
-  modifyOrder(orderId, newPrice, shiftBrackets = true) {
+  // Modify limit/stop order price or lots
+  modifyOrder(orderId, patch, shiftBrackets = true) {
     const order = this.orders.find(o => o.id === orderId);
-    if (!order || !newPrice || newPrice <= 0) return false;
-    const oldPrice = order.price;
-    order.price = Number(newPrice);
+    if (!order || !patch) return false;
 
-    // Shift attached SL and TP brackets proportionally
-    if (shiftBrackets && oldPrice > 0) {
-      const delta = +(order.price - oldPrice).toFixed(2);
-      if (order.sl !== null) order.sl = +(order.sl + delta).toFixed(2);
-      if (order.tp !== null) order.tp = +(order.tp + delta).toFixed(2);
+    // Support both numeric price (legacy signature) and patch object { price, lots }
+    const patchObj = typeof patch === 'number' ? { price: patch } : patch;
+
+    if (patchObj.price !== undefined && Number(patchObj.price) > 0) {
+      const oldPrice = order.price;
+      order.price = Number(patchObj.price);
+
+      // Shift attached SL and TP brackets proportionally
+      if (shiftBrackets && oldPrice > 0) {
+        const delta = +(order.price - oldPrice).toFixed(2);
+        if (order.sl !== null) order.sl = +(order.sl + delta).toFixed(2);
+        if (order.tp !== null) order.tp = +(order.tp + delta).toFixed(2);
+      }
+    }
+
+    if (patchObj.lots !== undefined) {
+      const newLots = Math.max(1, Math.round(Number(patchObj.lots)));
+      if (!isNaN(newLots) && newLots > 0) {
+        order.lots = newLots;
+        order.qty = order.lots * (order.lotSize || 1);
+      }
     }
 
     this.notifyUpdate();

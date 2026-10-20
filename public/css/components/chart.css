@@ -578,6 +578,28 @@
   color: #ffd180;
 }
 
+.order-badge .order-tag.clickable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.order-badge .order-tag.clickable:hover {
+  background-color: rgba(41, 98, 255, 0.5);
+  box-shadow: 0 0 8px rgba(41, 98, 255, 0.6);
+  transform: scale(1.04);
+}
+
+.order-badge .order-tag.clickable .tag-edit-icon {
+  margin-left: 3px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.order-badge .order-tag.clickable:hover .tag-edit-icon {
+  opacity: 1;
+}
+
 /* Drag Handle Affordance */
 .drag-handle {
   cursor: grab;
