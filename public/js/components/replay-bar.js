@@ -201,22 +201,16 @@ export class ReplayBarComponent {
     }
 
     if (this.optStartFirstDate) {
-      this.optStartFirstDate.onclick = () => {
+      this.optStartFirstDate.onclick = async () => {
         this.startPointMenu.style.display = 'none';
-        if (this.store.simulator) {
-          this.store.simulator.jumpToFirstBar();
-          showToast('Симуляция начата с первой доступной даты истории', 'success');
-        }
+        await this.handleStartFirstDate();
       };
     }
 
     if (this.optStartRandomBar) {
-      this.optStartRandomBar.onclick = () => {
+      this.optStartRandomBar.onclick = async () => {
         this.startPointMenu.style.display = 'none';
-        if (this.store.simulator) {
-          this.store.simulator.jumpToRandomBar();
-          showToast('Выбран случайный момент истории для слепого теста стратегии!', 'success');
-        }
+        await this.handleStartRandomBar();
       };
     }
   }
@@ -238,9 +232,12 @@ export class ReplayBarComponent {
     }
 
     if (this.btnQuickEarliest) {
-      this.btnQuickEarliest.onclick = () => {
-        const sim = this.store.simulator;
-        const t = sim ? sim.getEarliestTime() : null;
+      this.btnQuickEarliest.onclick = async () => {
+        const symbol = this.store.get('currentSymbol');
+        const figi = this.store.get('currentFigi');
+        const tf = this.store.get('currentTimeframe');
+        const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+        const t = bounds?.earliestTimeSec || (this.store.simulator ? this.store.simulator.getEarliestTime() : null);
         if (t && this.inputJumpDate) {
           const d = new Date(t * 1000);
           this.inputJumpDate.value = d.toISOString().split('T')[0];
@@ -284,14 +281,19 @@ export class ReplayBarComponent {
     }
   }
 
-  openDatePickerModal() {
+  async openDatePickerModal() {
     const simulator = this.store.simulator;
     if (!simulator) return;
-    const earliest = simulator.getEarliestTime();
-    const latest = simulator.getLatestTime();
+    const symbol = this.store.get('currentSymbol');
+    const figi = this.store.get('currentFigi');
+    const tf = this.store.get('currentTimeframe');
+
+    const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+    const earliest = bounds?.earliestTimeSec || simulator.getEarliestTime();
+    const latest = bounds?.latestTimeSec || simulator.getLatestTime();
 
     if (earliest && latest && this.datePickerRangeInfo) {
-      this.datePickerRangeInfo.innerHTML = `Загружено: <b>${formatTimestamp(earliest)}</b> — <b>${formatTimestamp(latest)}</b><br><span style="color: var(--tv-text-muted); font-size: 11px;">(Любая выбранная дата автоматически подгрузит историю с биржи)</span>`;
+      this.datePickerRangeInfo.innerHTML = `Доступная история: <b>${formatTimestamp(earliest)}</b> — <b>${formatTimestamp(latest)}</b><br><span style="color: var(--tv-text-muted); font-size: 11px;">(Любая выбранная дата автоматически подгрузит историю с биржи)</span>`;
       const currentBar = simulator.getCurrentBar();
       const refTime = currentBar ? currentBar.time : latest;
       const d = new Date(refTime * 1000);
@@ -302,6 +304,148 @@ export class ReplayBarComponent {
     }
 
     if (this.datePickerModal) this.datePickerModal.classList.add('open');
+  }
+
+  async handleStartFirstDate() {
+    const simulator = this.store.simulator;
+    const mainSeries = this.store.mainSeries;
+    const chart = this.store.chart;
+    if (!simulator) return;
+
+    const symbol = this.store.get('currentSymbol');
+    const figi = this.store.get('currentFigi');
+    const tf = this.store.get('currentTimeframe');
+    const step = timeframeToSeconds(tf);
+
+    showToast('Загрузка с первой доступной даты истории...', 'info');
+
+    try {
+      const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+      const earliestSec = bounds?.earliestTimeSec || simulator.getEarliestTime();
+
+      if (!earliestSec) {
+        simulator.jumpToFirstBar(25);
+        if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+        eventBus.emit('replay:scrubbed');
+        showToast('Симуляция начата с первой доступной свечи', 'success');
+        return;
+      }
+
+      // Check if already near earliestSec
+      const simEarliest = simulator.getEarliestTime();
+      if (simEarliest && Math.abs(simEarliest - earliestSec) <= step * 5) {
+        simulator.jumpToFirstBar(25);
+        if (mainSeries) {
+          mainSeries.setData(simulator.getVisibleCandles());
+          if (chart) chart.fitContent();
+        }
+        eventBus.emit('replay:scrubbed');
+        const startBar = simulator.getCurrentBar();
+        const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
+        showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}`, 'success');
+        return;
+      }
+
+      // Load 1000 bars starting from earliestSec forward
+      const forwardSec = Math.max(1000 * step, 14 * 86400);
+      const toSec = earliestSec + forwardSec;
+
+      const data = await marketDataService.getCandles(symbol, figi, tf, 1000, toSec, earliestSec);
+      if (data && data.candles && data.candles.length > 0) {
+        simulator.loadData(data.candles);
+        simulator.jumpToFirstBar(25);
+        if (mainSeries) {
+          mainSeries.setData(simulator.getVisibleCandles());
+          if (chart) chart.fitContent();
+        }
+        eventBus.emit('replay:scrubbed');
+        const startBar = simulator.getCurrentBar();
+        const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
+        showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}`, 'success');
+      } else {
+        simulator.jumpToFirstBar(25);
+        if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+        eventBus.emit('replay:scrubbed');
+        showToast('Симуляция начата с первой доступной свечи', 'info');
+      }
+    } catch (err) {
+      console.error('Error starting from first date:', err);
+      simulator.jumpToFirstBar(25);
+      if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+      eventBus.emit('replay:scrubbed');
+      showToast('Симуляция начата с доступной истории', 'info');
+    }
+  }
+
+  async handleStartRandomBar() {
+    const simulator = this.store.simulator;
+    const mainSeries = this.store.mainSeries;
+    const chart = this.store.chart;
+    if (!simulator) return;
+
+    const symbol = this.store.get('currentSymbol');
+    const figi = this.store.get('currentFigi');
+    const tf = this.store.get('currentTimeframe');
+    const step = timeframeToSeconds(tf);
+
+    showToast('Поиск случайного момента за всю историю актива...', 'info');
+
+    try {
+      const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+      const nowSec = Math.floor(Date.now() / 1000);
+      const earliestSec = bounds?.earliestTimeSec || (nowSec - 365 * 86400);
+      const latestSec = bounds?.latestTimeSec || nowSec;
+
+      // Select random time across entire range leaving room for pre-roll and future simulation
+      const minSec = earliestSec + 50 * step;
+      const maxSec = Math.max(minSec + 50 * step, latestSec - 250 * step);
+      const randomSec = Math.floor(minSec + Math.random() * (maxSec - minSec));
+      const snappedRandomSec = Math.floor(randomSec / step) * step;
+
+      // Check if snappedRandomSec is already within simulator's allCandles
+      const simEarliest = simulator.getEarliestTime();
+      const simLatest = simulator.getLatestTime();
+      if (simEarliest && simLatest && snappedRandomSec >= simEarliest + 20 * step && snappedRandomSec <= simLatest - 50 * step) {
+        simulator.jumpToBar(snappedRandomSec);
+        if (mainSeries) {
+          mainSeries.setData(simulator.getVisibleCandles());
+          if (chart) chart.fitContent();
+        }
+        eventBus.emit('replay:scrubbed');
+        const cur = simulator.getCurrentBar();
+        const dateFormatted = cur ? formatTimestamp(cur.time) : formatTimestamp(snappedRandomSec);
+        showToast(`Случайный момент истории: ${dateFormatted}! Слепой тест готов.`, 'success');
+        return;
+      }
+
+      // Fetch block centered at snappedRandomSec
+      const toSec = snappedRandomSec + Math.max(800 * step, 7 * 86400);
+
+      const data = await marketDataService.getCandles(symbol, figi, tf, 900, toSec);
+      if (data && data.candles && data.candles.length > 0) {
+        simulator.loadData(data.candles);
+        simulator.jumpToBar(snappedRandomSec);
+        if (mainSeries) {
+          mainSeries.setData(simulator.getVisibleCandles());
+          if (chart) chart.fitContent();
+        }
+        eventBus.emit('replay:scrubbed');
+        const cur = simulator.getCurrentBar();
+        const dateFormatted = cur ? formatTimestamp(cur.time) : formatTimestamp(snappedRandomSec);
+        showToast(`Случайный момент истории: ${dateFormatted}! Слепой тест готов.`, 'success');
+      } else {
+        simulator.jumpToRandomBar(null, 25);
+        if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+        eventBus.emit('replay:scrubbed');
+        showToast('Выбран случайный момент истории для теста', 'success');
+      }
+    } catch (err) {
+      console.error('Error selecting random historical bar:', err);
+      simulator.jumpToRandomBar(null, 25);
+      if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+      eventBus.emit('replay:scrubbed');
+      showToast('Выбран случайный момент истории', 'info');
+    }
   }
 
   async handleApplyDatePicker() {

@@ -26,9 +26,24 @@ class MarketDataService {
           cached = await cacheService.getCachedCandles(ticker, timeframe);
         }
 
-        // If from is requested, cache must contain bars >= from
+        // Validate that cache actually covers the requested window
         const minBarsRequired = from ? 1 : 100;
-        if (cached && cached.length >= minBarsRequired) {
+        let isCacheSufficient = cached && cached.length >= minBarsRequired;
+        if (isCacheSufficient && to) {
+          const latestCached = cached[cached.length - 1]?.time;
+          // If requested 'to' is more than 3 days ahead of what we have cached, we need fresh data
+          if (!latestCached || latestCached < to - 86400 * 3) {
+            isCacheSufficient = false;
+          }
+        }
+        if (isCacheSufficient && from) {
+          const earliestCached = cached[0]?.time;
+          if (!earliestCached || earliestCached > from + 86400 * 3) {
+            isCacheSufficient = false;
+          }
+        }
+
+        if (isCacheSufficient) {
           const meta = await cacheService.getSeriesMeta(ticker, timeframe);
           const visibleSlice = count ? cached.slice(-count) : cached;
 
@@ -100,6 +115,20 @@ class MarketDataService {
 
   async getCacheStats(ticker, timeframe) {
     return await cacheService.getSeriesMeta(ticker, timeframe);
+  }
+
+  // Get earliest and latest historical boundaries for instrument & timeframe
+  async getBoundaries(ticker, figi, timeframe) {
+    const key = `${(ticker || '').toUpperCase()}_${(timeframe || '').toLowerCase()}`;
+    if (!this.boundariesCache) this.boundariesCache = new Map();
+    if (this.boundariesCache.has(key)) {
+      return this.boundariesCache.get(key);
+    }
+    const data = await API.getInstrumentBoundaries(ticker, figi, timeframe);
+    if (data && data.ok) {
+      this.boundariesCache.set(key, data);
+    }
+    return data;
   }
 }
 

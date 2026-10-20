@@ -296,17 +296,21 @@ class MarketSimulator {
     return null;
   }
 
-  // Jump to first available date/candle
-  jumpToFirstBar() {
+  // Jump to first available date/candle with pre-roll context
+  jumpToFirstBar(contextBars = 25) {
     if (this.allCandles.length === 0) return null;
-    return this.jumpToBar(Math.min(15, this.allCandles.length - 1));
+    const targetIdx = Math.min(Math.max(1, contextBars), this.allCandles.length - 1);
+    return this.jumpToBar(targetIdx);
   }
 
   // Jump to a random historical bar for blind edge testing
-  jumpToRandomBar() {
+  jumpToRandomBar(targetTimeOrIndex = null, contextBars = 25) {
     if (this.allCandles.length === 0) return null;
-    const min = Math.min(15, Math.floor(this.allCandles.length * 0.15));
-    const max = Math.max(min + 5, Math.floor(this.allCandles.length * 0.8));
+    if (typeof targetTimeOrIndex === 'number') {
+      return this.jumpToBar(targetTimeOrIndex);
+    }
+    const min = Math.min(contextBars, Math.floor(this.allCandles.length * 0.1));
+    const max = Math.max(min + 5, this.allCandles.length - 20);
     const randomIndex = Math.floor(Math.random() * (max - min)) + min;
     return this.jumpToBar(randomIndex);
   }

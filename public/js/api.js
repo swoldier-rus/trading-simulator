@@ -64,6 +64,19 @@ const API = {
       console.error('getCandles error:', err);
       return { ok: false, candles: [] };
     }
+  },
+
+  // Get historical boundaries (earliest and latest available dates)
+  async getInstrumentBoundaries(ticker, figi, interval) {
+    try {
+      let url = `/api/instruments/boundaries?ticker=${encodeURIComponent(ticker || 'SBER')}&interval=${encodeURIComponent(interval || '1h')}`;
+      if (figi) url += `&figi=${encodeURIComponent(figi)}`;
+      const res = await fetch(url);
+      return await res.json();
+    } catch (err) {
+      console.error('getInstrumentBoundaries error:', err);
+      return { ok: false };
+    }
   }
 };
 

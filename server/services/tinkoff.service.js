@@ -143,6 +143,39 @@ class TinkoffService {
   }
 
   /**
+   * Get instrument details including historical candle dates
+   */
+  async getInstrumentDetails(figi, token) {
+    if (!token || token.length < 10 || !figi) {
+      return null;
+    }
+
+    try {
+      const response = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/GetInstrumentBy', token, {
+        idType: 'INSTRUMENT_ID_TYPE_FIGI',
+        id: figi
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      const inst = data.instrument || {};
+      return {
+        figi: inst.figi,
+        ticker: inst.ticker,
+        first1MinCandleDate: inst.first1MinCandleDate,
+        first1DayCandleDate: inst.first1DayCandleDate,
+        ipoDate: inst.ipoDate
+      };
+    } catch (err) {
+      console.warn('[TinkoffService] Network error during GetInstrumentBy:', err.message);
+      return null;
+    }
+  }
+
+  /**
    * Fetch historical candles in chunks with pagination
    */
   async getCandles({ figi, interval, count, toDate, fromDate, token }) {
