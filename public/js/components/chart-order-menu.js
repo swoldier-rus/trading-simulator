@@ -27,6 +27,7 @@ export class ChartOrderMenuComponent {
     this.menuTextSecondary = document.getElementById('menuTextSecondary');
 
     this.btnMenuActionCustom = document.getElementById('btnMenuActionCustom');
+    this.btnMenuResetScale = document.getElementById('btnMenuResetScale');
 
     // State
     this.menuTargetPrice = null;
@@ -183,6 +184,17 @@ export class ChartOrderMenuComponent {
 
         eventBus.emit('orderpanel:custom', { price: this.menuTargetPrice, lots: this.menuLots, type });
         showToast(`Заявка по ${this.menuTargetPrice.toFixed(2)} ₽ перенесена в панель ордеров`, 'info');
+      });
+    }
+
+    if (this.btnMenuResetScale) {
+      this.btnMenuResetScale.addEventListener('click', () => {
+        this.close();
+        const chart = this.store.chart;
+        if (chart && typeof chart.resetScale === 'function') {
+          chart.resetScale();
+          showToast('Состояние графика сброшено', 'info');
+        }
       });
     }
 

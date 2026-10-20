@@ -325,6 +325,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       orderPanel.executeTrade('BUY');
     } else if (e.key === 's' || e.key === 'S' || e.key === 'ы' || e.key === 'Ы') {
       orderPanel.executeTrade('SELL');
+    } else if (e.altKey && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К')) {
+      e.preventDefault();
+      const chart = store.chart;
+      if (chart && typeof chart.resetScale === 'function') {
+        chart.resetScale();
+        showToast('Состояние графика сброшено (Alt+R)', 'info');
+      }
     }
   });
 

@@ -78,8 +78,20 @@ export class ChartControllerComponent {
         timezone: 'Europe/Moscow',
         watermark: false,
         branding: false,
-        axisChrome: { sessionClock: true, barCountdown: false }
+        axisChrome: { sessionClock: true, barCountdown: false },
+        doubleClick: 'none'
       });
+
+      this.chart._doubleClick = 'none';
+      if (typeof this.chart.on === 'function') {
+        this.chart.on('dblclick', (e) => {
+          // Mark handled so native OpenAlgo resetScale() is never called on double-click
+          const dc = this.store.drawingController;
+          if (!dc || !dc.activeTool()) {
+            if (e) e.handled = true;
+          }
+        });
+      }
 
       this.store.chart = this.chart;
 

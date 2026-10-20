@@ -453,6 +453,31 @@
   white-space: nowrap;
 }
 
+.chart-order-action-btn .action-shortcut {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tv-text-muted);
+  margin-left: auto;
+  padding-left: 12px;
+  opacity: 0.85;
+}
+
+.chart-order-action-btn:hover .action-shortcut {
+  color: #fff;
+}
+
+.chart-order-action-btn .action-icon.reset-scale-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--tv-text-muted);
+}
+
+.chart-order-action-btn:hover .action-icon.reset-scale-icon {
+  color: #2962ff;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Interactive Drag & Drop Trade Lines Overlay (Positions, SL, TP, Orders)   */
 /* -------------------------------------------------------------------------- */
