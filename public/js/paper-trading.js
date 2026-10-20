@@ -62,6 +62,8 @@ class PaperTradingAccount {
 
         this.balance -= commission;
 
+        const openTimeSec = time || Math.floor(Date.now() / 1000);
+
         const position = {
           id: 'pos_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           symbol,
@@ -75,8 +77,22 @@ class PaperTradingAccount {
           unrealizedPnLPercent: 0,
           sl: sl ? Number(sl) : null,
           tp: tp ? Number(tp) : null,
-          openTime: time || Math.floor(Date.now() / 1000),
-          commissionPaid: commission
+          openTime: openTimeSec,
+          commissionPaid: commission,
+          entries: [
+            {
+              id: 'entry_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+              time: openTimeSec,
+              price: price,
+              qty: totalShares,
+              lots: qty,
+              side: side,
+              index: 1,
+              cumulativeLots: qty,
+              cumulativeQty: totalShares,
+              avgPriceAtEntry: price
+            }
+          ]
         };
 
         this.positions.push(position);
@@ -112,6 +128,38 @@ class PaperTradingAccount {
 
         // Weighted average entry price:
         const weightedAvgPrice = +(((oldShares * existingPos.entryPrice) + (newShares * price)) / totalSharesAgg).toFixed(2);
+
+        // Ensure entries array exists for backwards compatibility
+        if (!existingPos.entries || existingPos.entries.length === 0) {
+          existingPos.entries = [
+            {
+              id: 'entry_' + existingPos.id + '_1',
+              time: existingPos.openTime,
+              price: existingPos.entryPrice,
+              qty: oldShares,
+              lots: existingPos.lots,
+              side: existingPos.side,
+              index: 1,
+              cumulativeLots: existingPos.lots,
+              cumulativeQty: oldShares,
+              avgPriceAtEntry: existingPos.entryPrice
+            }
+          ];
+        }
+
+        const entryTimeSec = time || Math.floor(Date.now() / 1000);
+        existingPos.entries.push({
+          id: 'entry_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          time: entryTimeSec,
+          price: price,
+          qty: newShares,
+          lots: qty,
+          side: side,
+          index: existingPos.entries.length + 1,
+          cumulativeLots: totalLotsAgg,
+          cumulativeQty: totalSharesAgg,
+          avgPriceAtEntry: weightedAvgPrice
+        });
 
         existingPos.qty = totalSharesAgg;
         existingPos.lots = totalLotsAgg;
@@ -188,7 +236,21 @@ class PaperTradingAccount {
           reason: isFullClose
             ? 'Закрытие встречной заявкой'
             : (isPartialClose ? `Частичное закрытие (${closeLots} из ${oldLots} лот.)` : 'Переворот позиции'),
-          totalCommission: totalTradeCommission
+          totalCommission: totalTradeCommission,
+          entries: existingPos.entries ? existingPos.entries.slice() : [
+            {
+              id: 'entry_' + existingPos.id,
+              time: existingPos.openTime,
+              price: existingPos.entryPrice,
+              qty: closeShares,
+              lots: closeLots,
+              side: existingPos.side,
+              index: 1,
+              cumulativeLots: closeLots,
+              cumulativeQty: closeShares,
+              avgPriceAtEntry: existingPos.entryPrice
+            }
+          ]
         };
 
         this.tradeHistory.unshift(trade);
@@ -245,6 +307,8 @@ class PaperTradingAccount {
 
           this.balance -= newCommission;
 
+          const revOpenTimeSec = time || Math.floor(Date.now() / 1000);
+
           const newPos = {
             id: 'pos_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             symbol,
@@ -258,8 +322,22 @@ class PaperTradingAccount {
             unrealizedPnLPercent: 0,
             sl: sl ? Number(sl) : null,
             tp: tp ? Number(tp) : null,
-            openTime: time || Math.floor(Date.now() / 1000),
-            commissionPaid: newCommission
+            openTime: revOpenTimeSec,
+            commissionPaid: newCommission,
+            entries: [
+              {
+                id: 'entry_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                time: revOpenTimeSec,
+                price: price,
+                qty: remainingShares,
+                lots: remainingLots,
+                side: side,
+                index: 1,
+                cumulativeLots: remainingLots,
+                cumulativeQty: remainingShares,
+                avgPriceAtEntry: price
+              }
+            ]
           };
 
           this.positions.push(newPos);
@@ -409,7 +487,21 @@ class PaperTradingAccount {
       openTime: pos.openTime,
       closeTime: time || Math.floor(Date.now() / 1000),
       reason,
-      totalCommission: +(exitCommission + pos.commissionPaid).toFixed(2)
+      totalCommission: +(exitCommission + pos.commissionPaid).toFixed(2),
+      entries: pos.entries ? pos.entries.slice() : [
+        {
+          id: 'entry_' + pos.id,
+          time: pos.openTime,
+          price: pos.entryPrice,
+          qty: pos.qty,
+          lots: pos.lots,
+          side: pos.side,
+          index: 1,
+          cumulativeLots: pos.lots,
+          cumulativeQty: pos.qty,
+          avgPriceAtEntry: pos.entryPrice
+        }
+      ]
     };
 
     this.tradeHistory.unshift(trade);
