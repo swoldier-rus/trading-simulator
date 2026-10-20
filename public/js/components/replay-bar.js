@@ -20,7 +20,6 @@ export class ReplayBarComponent {
     this.btnReplayStepBack = document.getElementById('btnReplayStepBack');
     this.btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
     this.btnToggleIntraBar = document.getElementById('btnToggleIntraBar');
-    this.replaySubTickBadge = document.getElementById('replaySubTickBadge');
     this.replaySpeedSelect = document.getElementById('replaySpeedSelect');
     this.replayScrubSlider = document.getElementById('replayScrubSlider');
     this.replayInfoText = document.getElementById('replayInfoText');
@@ -134,9 +133,6 @@ export class ReplayBarComponent {
         const textSpan = this.btnToggleIntraBar.querySelector('.ticks-text');
         if (textSpan) {
           textSpan.textContent = newMode ? 'Тики: ВКЛ' : 'Тики: ВЫКЛ';
-        }
-        if (!newMode && this.replaySubTickBadge) {
-          this.replaySubTickBadge.style.display = 'none';
         }
         showToast(
           newMode
@@ -392,17 +388,6 @@ export class ReplayBarComponent {
       this.btnReplayPlay.title = isPlaying ? 'Пауза (Пробел)' : 'Старт (Пробел)';
     }
 
-    // Sub-tick phase badge readout
-    if (this.replaySubTickBadge) {
-      if (subTickInfo && subTickInfo.isSubTick && subTickInfo.phaseLabel && this.store.simulator?.isIntraBarEnabled) {
-        this.replaySubTickBadge.style.display = 'inline-block';
-        this.replaySubTickBadge.textContent = subTickInfo.phaseLabel;
-        this.replaySubTickBadge.className = `replay-subtick-badge phase-${subTickInfo.phaseName}`;
-      } else {
-        this.replaySubTickBadge.style.display = 'none';
-      }
-    }
-
     // Sync toggle button state
     if (this.btnToggleIntraBar) {
       const isTicks = !!this.store.simulator?.isIntraBarEnabled;
@@ -434,7 +419,6 @@ export class ReplayBarComponent {
     if (!this.floatingReplayBar) return;
 
     this.dragHandle = document.getElementById('replayDragHandle');
-    this.replayBadge = this.floatingReplayBar.querySelector('.replay-badge');
 
     // Restore saved position from localStorage
     this.restoreSavedPosition();
@@ -557,9 +541,10 @@ export class ReplayBarComponent {
     if (this.dragHandle) {
       this.dragHandle.addEventListener('dblclick', resetPosition);
     }
-    if (this.replayBadge) {
-      this.replayBadge.addEventListener('dblclick', resetPosition);
-    }
+    this.floatingReplayBar.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button, select, input, .replay-control-btn, .replay-exit-btn, .replay-speed-select, .replay-slider')) return;
+      resetPosition(e);
+    });
 
     // Keep toolbar in bounds on window resize
     window.addEventListener('resize', () => {
