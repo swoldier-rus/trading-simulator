@@ -55,6 +55,7 @@ export class ReplayBarComponent {
     this.initTransportControls();
     this.initStartPointMenu();
     this.initDatePickerModal();
+    this.initDragAndDrop();
 
     // Close startPointMenu on outside click
     document.addEventListener('click', (e) => {
@@ -370,12 +371,194 @@ export class ReplayBarComponent {
   updateStateView(isActive) {
     if (this.floatingReplayBar) {
       this.floatingReplayBar.style.display = isActive ? 'flex' : 'none';
+      if (isActive) {
+        this.clampPositionInBounds();
+      }
     }
     if (this.btnToggleReplay) {
       this.btnToggleReplay.classList.toggle('active', isActive);
     }
     if (this.btnReplayText) {
       this.btnReplayText.textContent = isActive ? 'Симулятор ВКЛ' : 'Симулятор (История)';
+    }
+  }
+
+  // --- Modern Drag & Drop for Floating Replay Toolbar ---
+  initDragAndDrop() {
+    if (!this.floatingReplayBar) return;
+
+    this.dragHandle = document.getElementById('replayDragHandle');
+    this.replayBadge = this.floatingReplayBar.querySelector('.replay-badge');
+
+    // Restore saved position from localStorage
+    this.restoreSavedPosition();
+
+    let dragState = null;
+
+    const onPointerDown = (e) => {
+      if (e.button !== 0) return; // Only primary mouse button
+
+      // Ignore clicks on interactive controls inside the toolbar
+      if (e.target.closest('button, select, input, .replay-control-btn, .replay-exit-btn, .replay-speed-select, .replay-slider')) {
+        return;
+      }
+
+      e.preventDefault();
+
+      const bar = this.floatingReplayBar;
+      const parent = bar.parentElement;
+      if (!parent) return;
+
+      const barRect = bar.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+
+      // Current position relative to parent workspace
+      const currentLeft = barRect.left - parentRect.left;
+      const currentTop = barRect.top - parentRect.top;
+
+      try {
+        (this.dragHandle || bar).setPointerCapture(e.pointerId);
+      } catch (err) {}
+
+      dragState = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        initialLeft: currentLeft,
+        initialTop: currentTop,
+        barWidth: barRect.width,
+        barHeight: barRect.height,
+        parentWidth: parentRect.width,
+        parentHeight: parentRect.height
+      };
+
+      bar.classList.add('dragging');
+
+      const onPointerMove = (ev) => {
+        if (!dragState) return;
+        ev.preventDefault();
+
+        const deltaX = ev.clientX - dragState.startX;
+        const deltaY = ev.clientY - dragState.startY;
+
+        let newLeft = dragState.initialLeft + deltaX;
+        let newTop = dragState.initialTop + deltaY;
+
+        // Boundaries: keep toolbar safely inside workspace with 8px margin
+        const minX = 8;
+        const maxX = dragState.parentWidth - dragState.barWidth - 8;
+        const minY = 8;
+        const maxY = dragState.parentHeight - dragState.barHeight - 8;
+
+        newLeft = Math.max(minX, Math.min(maxX, newLeft));
+        newTop = Math.max(minY, Math.min(maxY, newTop));
+
+        bar.style.left = `${newLeft}px`;
+        bar.style.top = `${newTop}px`;
+        bar.style.transform = 'none';
+      };
+
+      const onPointerUp = (ev) => {
+        if (!dragState) return;
+
+        bar.classList.remove('dragging');
+
+        try {
+          const capEl = this.dragHandle || bar;
+          if (capEl.hasPointerCapture && capEl.hasPointerCapture(dragState.pointerId)) {
+            capEl.releasePointerCapture(dragState.pointerId);
+          }
+        } catch (err) {}
+
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+
+        // Save position in localStorage
+        const barRect = bar.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        const savedPos = {
+          left: Math.round(barRect.left - parentRect.left),
+          top: Math.round(barRect.top - parentRect.top)
+        };
+        try {
+          localStorage.setItem('trading_simulator_replay_pos', JSON.stringify(savedPos));
+        } catch (e) {}
+
+        dragState = null;
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    };
+
+    // Attach pointerdown to toolbar
+    this.floatingReplayBar.addEventListener('pointerdown', onPointerDown);
+
+    // Double-click to reset position back to center
+    const resetPosition = (e) => {
+      e.stopPropagation();
+      this.floatingReplayBar.style.left = '50%';
+      this.floatingReplayBar.style.top = '16px';
+      this.floatingReplayBar.style.transform = 'translateX(-50%)';
+      try {
+        localStorage.removeItem('trading_simulator_replay_pos');
+      } catch (err) {}
+      showToast('Положение панели симулятора сброшено по центру', 'info');
+    };
+
+    if (this.dragHandle) {
+      this.dragHandle.addEventListener('dblclick', resetPosition);
+    }
+    if (this.replayBadge) {
+      this.replayBadge.addEventListener('dblclick', resetPosition);
+    }
+
+    // Keep toolbar in bounds on window resize
+    window.addEventListener('resize', () => {
+      this.clampPositionInBounds();
+    });
+  }
+
+  restoreSavedPosition() {
+    try {
+      const saved = localStorage.getItem('trading_simulator_replay_pos');
+      if (saved && this.floatingReplayBar) {
+        const pos = JSON.parse(saved);
+        if (typeof pos.left === 'number' && typeof pos.top === 'number') {
+          this.floatingReplayBar.style.left = `${pos.left}px`;
+          this.floatingReplayBar.style.top = `${pos.top}px`;
+          this.floatingReplayBar.style.transform = 'none';
+        }
+      }
+    } catch (e) {}
+  }
+
+  clampPositionInBounds() {
+    if (!this.floatingReplayBar || this.floatingReplayBar.style.display === 'none') return;
+    const parent = this.floatingReplayBar.parentElement;
+    if (!parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const barRect = this.floatingReplayBar.getBoundingClientRect();
+
+    if (barRect.width === 0 || parentRect.width === 0) return;
+
+    let left = barRect.left - parentRect.left;
+    let top = barRect.top - parentRect.top;
+
+    const minX = 8;
+    const maxX = parentRect.width - barRect.width - 8;
+    const minY = 8;
+    const maxY = parentRect.height - barRect.height - 8;
+
+    if (left < minX || left > maxX || top < minY || top > maxY) {
+      left = Math.max(minX, Math.min(maxX, left));
+      top = Math.max(minY, Math.min(maxY, top));
+      this.floatingReplayBar.style.left = `${left}px`;
+      this.floatingReplayBar.style.top = `${top}px`;
+      this.floatingReplayBar.style.transform = 'none';
     }
   }
 }

@@ -1,6 +1,6 @@
 /* replay-bar.css - Floating Simulation Replay Bar & Dropdown Controls */
 
-/* Floating Replay Bar (TradingView exact replica) */
+/* Floating Replay Bar (TradingView exact replica with Drag & Drop) */
 .floating-replay-toolbar {
   position: absolute;
   top: 16px;
@@ -16,6 +16,40 @@
   gap: 8px;
   z-index: var(--z-replay-bar, 50);
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.floating-replay-toolbar.dragging {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.9) !important;
+  border-color: var(--tv-accent, #2962ff) !important;
+  cursor: grabbing !important;
+  transition: none !important;
+}
+
+/* Dedicated Drag Grip Handle */
+.replay-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  padding: 4px 6px 4px 2px;
+  color: var(--tv-text-muted, #787b86);
+  font-size: 13px;
+  line-height: 1;
+  transition: color 0.12s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.replay-drag-handle:hover {
+  color: #ffffff;
+}
+
+.floating-replay-toolbar.dragging .replay-drag-handle {
+  cursor: grabbing !important;
+  color: var(--tv-accent, #2962ff);
 }
 
 .replay-badge {
@@ -26,6 +60,7 @@
   padding: 2px 6px;
   border-radius: 3px;
   letter-spacing: 0.5px;
+  cursor: grab;
 }
 
 .replay-control-btn {

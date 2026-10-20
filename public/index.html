@@ -133,7 +133,12 @@
     
     <!-- Floating Replay Control Toolbar -->
     <div class="floating-replay-toolbar" id="floatingReplayBar" style="display: none;">
-      <span class="replay-badge">РЕЖИМ СИМУЛЯЦИИ</span>
+      <!-- Drag & Drop Handle -->
+      <div class="replay-drag-handle" id="replayDragHandle" title="Зажмите и перетащите панель (Двойной клик — сброс по центру)">
+        <span class="replay-drag-dots">⠿</span>
+      </div>
+
+      <span class="replay-badge" title="Двойной клик — возврат по центру">РЕЖИМ СИМУЛЯЦИИ</span>
 
       <!-- Jump to start point button -->
       <button class="replay-control-btn replay-start-point-btn" id="btnReplayStartPoint" title="Выбрать начальную точку (Бар, Дата, Случайный)">
