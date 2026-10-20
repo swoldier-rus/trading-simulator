@@ -118,10 +118,10 @@ class MarketDataService {
   }
 
   // Get earliest and latest historical boundaries for instrument & timeframe
-  async getBoundaries(ticker, figi, timeframe) {
+  async getBoundaries(ticker, figi, timeframe, forceRefresh = false) {
     const key = `${(ticker || '').toUpperCase()}_${(timeframe || '').toLowerCase()}`;
     if (!this.boundariesCache) this.boundariesCache = new Map();
-    if (this.boundariesCache.has(key)) {
+    if (!forceRefresh && this.boundariesCache.has(key)) {
       return this.boundariesCache.get(key);
     }
     const data = await API.getInstrumentBoundaries(ticker, figi, timeframe);

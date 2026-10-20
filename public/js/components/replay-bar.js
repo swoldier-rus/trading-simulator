@@ -4,6 +4,40 @@ import { API } from '../api.js';
 import { marketDataService } from '../services/market-data.service.js';
 import { formatTimestamp, timeframeToSeconds, showToast } from '../core/utils.js';
 
+// Helper: Calculate approximate calendar seconds needed to encompass requested number of trading bars
+function getCalendarSecondsForBars(timeframe, count = 1000) {
+  const tf = (timeframe || '1h').toLowerCase();
+  switch (tf) {
+    case '1w': return Math.ceil(count * 7) * 86400;
+    case '1d': return Math.ceil(count * 1.45) * 86400;
+    case '4h': return Math.ceil((count / 3) * 1.45) * 86400;
+    case '1h': return Math.ceil((count / 9) * 1.45) * 86400;
+    case '15m': return Math.ceil((count / 36) * 1.45) * 86400;
+    case '5m': return Math.ceil((count / 108) * 1.45) * 86400;
+    case '1m': return Math.ceil((count / 540) * 1.45) * 86400;
+    default: return Math.ceil((count / 9) * 1.45) * 86400;
+  }
+}
+
+// Helper: Snap timestamp to MOEX weekday and trading hours
+function snapToMoexTradingSession(sec, tf) {
+  const date = new Date(sec * 1000);
+  const day = date.getUTCDay(); // 0 is Sunday, 6 is Saturday
+  if (day === 0) date.setUTCDate(date.getUTCDate() - 2); // Shift Sunday to Friday
+  if (day === 6) date.setUTCDate(date.getUTCDate() - 1); // Shift Saturday to Friday
+
+  // For intraday (1m..4h), ensure hour falls within MOEX daytime session (10:00 - 18:40 MSK / 07:00 - 15:40 UTC)
+  if (tf !== '1d' && tf !== '1w') {
+    const utcHour = date.getUTCHours();
+    if (utcHour < 7 || utcHour >= 16) {
+      date.setUTCHours(9, 0, 0, 0); // 12:00 MSK midday
+    }
+  } else {
+    date.setUTCHours(0, 0, 0, 0);
+  }
+  return Math.floor(date.getTime() / 1000);
+}
+
 export class ReplayBarComponent {
   constructor(store) {
     this.store = store;
@@ -236,7 +270,7 @@ export class ReplayBarComponent {
         const symbol = this.store.get('currentSymbol');
         const figi = this.store.get('currentFigi');
         const tf = this.store.get('currentTimeframe');
-        const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+        const bounds = await marketDataService.getBoundaries(symbol, figi, tf, true);
         const t = bounds?.earliestTimeSec || (this.store.simulator ? this.store.simulator.getEarliestTime() : null);
         if (t && this.inputJumpDate) {
           const d = new Date(t * 1000);
@@ -288,7 +322,7 @@ export class ReplayBarComponent {
     const figi = this.store.get('currentFigi');
     const tf = this.store.get('currentTimeframe');
 
-    const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+    const bounds = await marketDataService.getBoundaries(symbol, figi, tf, true);
     const earliest = bounds?.earliestTimeSec || simulator.getEarliestTime();
     const latest = bounds?.latestTimeSec || simulator.getLatestTime();
 
@@ -315,13 +349,13 @@ export class ReplayBarComponent {
     const symbol = this.store.get('currentSymbol');
     const figi = this.store.get('currentFigi');
     const tf = this.store.get('currentTimeframe');
-    const step = timeframeToSeconds(tf);
 
-    showToast('Загрузка с первой доступной даты истории...', 'info');
+    showToast('Загрузка с первой доступной даты истории актива...', 'info');
 
     try {
-      const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
-      const earliestSec = bounds?.earliestTimeSec || simulator.getEarliestTime();
+      // Force fresh boundaries lookup from T-Investments API
+      const bounds = await marketDataService.getBoundaries(symbol, figi, tf, true);
+      const earliestSec = bounds?.earliestTimeSec;
 
       if (!earliestSec) {
         simulator.jumpToFirstBar(25);
@@ -331,29 +365,17 @@ export class ReplayBarComponent {
         return;
       }
 
-      // Check if already near earliestSec
-      const simEarliest = simulator.getEarliestTime();
-      if (simEarliest && Math.abs(simEarliest - earliestSec) <= step * 5) {
-        simulator.jumpToFirstBar(25);
-        if (mainSeries) {
-          mainSeries.setData(simulator.getVisibleCandles());
-          if (chart) chart.fitContent();
-        }
-        eventBus.emit('replay:scrubbed');
-        const startBar = simulator.getCurrentBar();
-        const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
-        showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}`, 'success');
-        return;
-      }
-
-      // Load 1000 bars starting from earliestSec forward
-      const forwardSec = Math.max(1000 * step, 14 * 86400);
+      // Calculate calendar seconds ahead from earliestSec to cover ~1000 bars
+      const forwardSec = getCalendarSecondsForBars(tf, 1000);
       const toSec = earliestSec + forwardSec;
 
-      const data = await marketDataService.getCandles(symbol, figi, tf, 1000, toSec, earliestSec);
+      // Always fetch directly from network to bypass cached recent bars
+      const data = await marketDataService.getCandles(symbol, figi, tf, 1000, toSec, earliestSec, { forceNetwork: true });
       if (data && data.candles && data.candles.length > 0) {
         simulator.loadData(data.candles);
-        simulator.jumpToFirstBar(25);
+        // Start from the very beginning of the series (minimal pre-roll: 5 bars or first bar)
+        const initialPreRoll = Math.min(10, Math.floor(data.candles.length * 0.05));
+        simulator.jumpToFirstBar(initialPreRoll);
         if (mainSeries) {
           mainSeries.setData(simulator.getVisibleCandles());
           if (chart) chart.fitContent();
@@ -391,37 +413,27 @@ export class ReplayBarComponent {
     showToast('Поиск случайного момента за всю историю актива...', 'info');
 
     try {
-      const bounds = await marketDataService.getBoundaries(symbol, figi, tf);
+      // Force fresh boundaries lookup from T-Investments API
+      const bounds = await marketDataService.getBoundaries(symbol, figi, tf, true);
       const nowSec = Math.floor(Date.now() / 1000);
-      const earliestSec = bounds?.earliestTimeSec || (nowSec - 365 * 86400);
-      const latestSec = bounds?.latestTimeSec || nowSec;
+      const earliestSec = bounds?.earliestTimeSec || (nowSec - 5 * 365 * 86400);
 
-      // Select random time across entire range leaving room for pre-roll and future simulation
-      const minSec = earliestSec + 50 * step;
-      const maxSec = Math.max(minSec + 50 * step, latestSec - 250 * step);
-      const randomSec = Math.floor(minSec + Math.random() * (maxSec - minSec));
-      const snappedRandomSec = Math.floor(randomSec / step) * step;
+      // Entire range: from earliest available T-Invest date to (today - 100 bars)
+      const minSec = earliestSec + 40 * step;
+      const maxSec = Math.max(minSec + 50 * step, nowSec - 100 * step);
+      const rawRandomSec = Math.floor(minSec + Math.random() * (maxSec - minSec));
 
-      // Check if snappedRandomSec is already within simulator's allCandles
-      const simEarliest = simulator.getEarliestTime();
-      const simLatest = simulator.getLatestTime();
-      if (simEarliest && simLatest && snappedRandomSec >= simEarliest + 20 * step && snappedRandomSec <= simLatest - 50 * step) {
-        simulator.jumpToBar(snappedRandomSec);
-        if (mainSeries) {
-          mainSeries.setData(simulator.getVisibleCandles());
-          if (chart) chart.fitContent();
-        }
-        eventBus.emit('replay:scrubbed');
-        const cur = simulator.getCurrentBar();
-        const dateFormatted = cur ? formatTimestamp(cur.time) : formatTimestamp(snappedRandomSec);
-        showToast(`Случайный момент истории: ${dateFormatted}! Слепой тест готов.`, 'success');
-        return;
-      }
+      // Snap to MOEX trading days and trading hours
+      const snappedRandomSec = snapToMoexTradingSession(rawRandomSec, tf);
 
-      // Fetch block centered at snappedRandomSec
-      const toSec = snappedRandomSec + Math.max(800 * step, 7 * 86400);
+      // Window calculation: 50 bars pre-roll before random bar, ~500 bars forward for trading simulation (total 600 bars)
+      const preRollSec = getCalendarSecondsForBars(tf, 50);
+      const forwardSec = getCalendarSecondsForBars(tf, 500);
+      const fromSec = Math.max(earliestSec, snappedRandomSec - preRollSec);
+      const toSec = Math.min(nowSec, snappedRandomSec + forwardSec);
 
-      const data = await marketDataService.getCandles(symbol, figi, tf, 900, toSec);
+      // Always fetch full historical block with forceNetwork: true
+      const data = await marketDataService.getCandles(symbol, figi, tf, 600, toSec, fromSec, { forceNetwork: true });
       if (data && data.candles && data.candles.length > 0) {
         simulator.loadData(data.candles);
         simulator.jumpToBar(snappedRandomSec);

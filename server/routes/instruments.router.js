@@ -60,15 +60,11 @@ router.get('/instruments/boundaries', async (req, res) => {
       if (details) {
         let firstIso = null;
         if (interval === '1d' || interval === '1w') {
+          // Full daily/weekly history available in T-Bank (e.g. from 2000 for SBER)
           firstIso = details.first1DayCandleDate || details.ipoDate;
-        } else if (interval === '1h' || interval === '4h') {
-          const threeYearsAgo = new Date(Date.now() - 3 * 365 * 86400 * 1000);
-          const instStart = details.first1DayCandleDate ? new Date(details.first1DayCandleDate) : threeYearsAgo;
-          firstIso = instStart > threeYearsAgo ? details.first1DayCandleDate : threeYearsAgo.toISOString();
         } else {
-          const oneYearAgo = new Date(Date.now() - 365 * 86400 * 1000);
-          const instStart = details.first1MinCandleDate ? new Date(details.first1MinCandleDate) : oneYearAgo;
-          firstIso = instStart > oneYearAgo ? details.first1MinCandleDate : oneYearAgo.toISOString();
+          // Intraday (1m, 5m, 15m, 1h, 4h) full history available in T-Bank (from March 2018 for SBER)
+          firstIso = details.first1MinCandleDate || details.first1DayCandleDate;
         }
 
         if (firstIso) {

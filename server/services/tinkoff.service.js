@@ -165,8 +165,8 @@ class TinkoffService {
       return {
         figi: inst.figi,
         ticker: inst.ticker,
-        first1MinCandleDate: inst.first1MinCandleDate,
-        first1DayCandleDate: inst.first1DayCandleDate,
+        first1MinCandleDate: inst.first1minCandleDate || inst.first1MinCandleDate,
+        first1DayCandleDate: inst.first1dayCandleDate || inst.first1DayCandleDate,
         ipoDate: inst.ipoDate
       };
     } catch (err) {
@@ -191,8 +191,9 @@ class TinkoffService {
     try {
       const chunkMs = getMaxChunkMs(interval);
       const stepSec = intervalToSeconds(interval);
-      const barsPerChunk = Math.max(1, Math.floor(chunkMs / (stepSec * 1000)));
-      const numChunks = Math.min(35, Math.max(3, Math.ceil(count / barsPerChunk) + 2));
+      // Account for MOEX trading hours density (trading is ~9-14h/day, weekends are closed)
+      const barsPerChunk = Math.max(1, Math.floor((chunkMs / (stepSec * 1000)) * 0.45));
+      const numChunks = Math.min(80, Math.max(6, Math.ceil(count / barsPerChunk) + 5));
 
       let chunkEnd = new Date(toDate.getTime());
       let rawCandles = [];
@@ -227,7 +228,7 @@ class TinkoffService {
 
         if (fromDate && chunkStart <= fromDate) break;
         chunkEnd = new Date(chunkStart.getTime() - 1000);
-        if (rawCandles.length >= count * 1.5) break;
+        if (!fromDate && rawCandles.length >= count * 1.5) break;
       }
 
       if (rawCandles.length > 0) {
@@ -251,6 +252,11 @@ class TinkoffService {
           }
         }
         candles.sort((a, b) => a.time - b.time);
+        if (fromDate) {
+          const fromSec = Math.floor(fromDate.getTime() / 1000);
+          const fromFiltered = candles.filter(c => c.time >= fromSec);
+          return count ? fromFiltered.slice(0, count) : fromFiltered;
+        }
         return count ? candles.slice(-count) : candles;
       }
 
