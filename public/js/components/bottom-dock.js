@@ -1,4 +1,6 @@
-// components/bottom-dock.js - Bottom Trading Dock Component (Positions, Orders, Trades, Stats)
+// components/bottom-dock.js - High-Performance Bottom Trading Dock Component
+// Implements Keyed DOM Diff-updates and RequestAnimationFrame (RAF) Throttling for 60 FPS replay.
+
 import { eventBus } from '../core/event-bus.js';
 import { formatMoney, formatTimestamp, showToast } from '../core/utils.js';
 
@@ -12,6 +14,7 @@ export class BottomDockComponent {
     this.ordersView = document.getElementById('ordersView');
     this.tradesView = document.getElementById('tradesView');
     this.analyticsView = document.getElementById('analyticsView');
+    this.activeTab = 'positions';
 
     // Badges
     this.badgePositions = document.getElementById('badgePositions');
@@ -47,6 +50,11 @@ export class BottomDockComponent {
     this.statReturnPct = document.getElementById('statReturnPct');
     this.statInitialCapital = document.getElementById('statInitialCapital');
 
+    // Performance & Throttling state
+    this.rafPending = false;
+    this.pendingMetrics = null;
+    this.renderedTradesSet = new Set();
+
     this.init();
   }
 
@@ -67,10 +75,17 @@ export class BottomDockComponent {
         tab.classList.add('active');
 
         const target = tab.getAttribute('data-tab');
+        this.activeTab = target;
+
         if (this.positionsView) this.positionsView.style.display = target === 'positions' ? 'block' : 'none';
         if (this.ordersView) this.ordersView.style.display = target === 'orders' ? 'block' : 'none';
         if (this.tradesView) this.tradesView.style.display = target === 'trades' ? 'block' : 'none';
-        if (this.analyticsView) this.analyticsView.style.display = target === 'analytics' ? 'block' : 'none';
+        if (this.analyticsView) {
+          this.analyticsView.style.display = target === 'analytics' ? 'block' : 'none';
+          if (this.store.paperAccount) {
+            this.renderAnalytics(this.store.paperAccount.getPerformanceMetrics());
+          }
+        }
       };
     });
   }
@@ -86,6 +101,7 @@ export class BottomDockComponent {
         if (count && count.length > 0) {
           showToast(`Закрыто позиций: ${count.length}`, 'info');
         }
+        this.flushUpdate(paperAccount.getPerformanceMetrics());
       };
     }
 
@@ -97,6 +113,7 @@ export class BottomDockComponent {
         if (count > 0) {
           showToast(`Отменено заявок: ${count}`, 'info');
         }
+        this.flushUpdate(paperAccount.getPerformanceMetrics());
       };
     }
 
@@ -105,8 +122,10 @@ export class BottomDockComponent {
         const paperAccount = this.store.paperAccount;
         if (!paperAccount) return;
         if (confirm('Сбросить весь торговый счет, баланс и историю симуляции?')) {
+          this.renderedTradesSet.clear();
           paperAccount.reset();
           showToast('Счет симулятора сброшен к исходному состоянию', 'info');
+          this.flushUpdate(paperAccount.getPerformanceMetrics());
         }
       };
     }
@@ -181,6 +200,7 @@ export class BottomDockComponent {
       const pnlSign = res.trade.pnl >= 0 ? '+' : '';
       showToast(`Позиция закрыта: ${pnlSign}${formatMoney(res.trade.pnl)}`, res.trade.pnl >= 0 ? 'success' : 'info');
     }
+    this.flushUpdate(paperAccount.getPerformanceMetrics());
   }
 
   handleReversePosition(id) {
@@ -194,6 +214,7 @@ export class BottomDockComponent {
       paperAccount.reversePosition(pos.id, bar ? bar.close : pos.currentPrice, bar ? bar.time : null);
       showToast(`Позиция ${pos.symbol} перевернута!`, 'info');
     }
+    this.flushUpdate(paperAccount.getPerformanceMetrics());
   }
 
   handleCancelOrder(id) {
@@ -204,12 +225,31 @@ export class BottomDockComponent {
     if (res.ok) {
       showToast('Заявка отменена', 'info');
     }
+    this.flushUpdate(paperAccount.getPerformanceMetrics());
   }
 
+  // RAF Throttled update entry point (guarantees at most 1 render per display refresh frame)
   update(metrics) {
     if (!metrics) return;
+    this.pendingMetrics = metrics;
 
-    // Metrics Bar
+    if (!this.rafPending) {
+      this.rafPending = true;
+      requestAnimationFrame(() => {
+        this.rafPending = false;
+        if (this.pendingMetrics) {
+          this.flushUpdate(this.pendingMetrics);
+          this.pendingMetrics = null;
+        }
+      });
+    }
+  }
+
+  // Immediate synchronous flush
+  flushUpdate(metrics) {
+    if (!metrics) return;
+
+    // 1. Metrics Bar
     if (this.metricBalance) this.metricBalance.textContent = formatMoney(metrics.balance);
     if (this.metricEquity) this.metricEquity.textContent = formatMoney(metrics.equity);
 
@@ -222,107 +262,209 @@ export class BottomDockComponent {
       this.metricWinrate.textContent = `${metrics.winRate}% (${metrics.winningTrades}/${metrics.totalTrades})`;
     }
 
-    // Badges
+    // 2. Badges
     if (this.badgePositions) this.badgePositions.textContent = metrics.openPositionsCount;
     if (this.badgeOrders) this.badgeOrders.textContent = metrics.workingOrdersCount;
     if (this.badgeTrades) this.badgeTrades.textContent = metrics.totalTrades;
 
-    // Tables
-    this.renderPositionsTable();
-    this.renderOrdersTable();
-    this.renderTradesTable();
-    this.renderAnalytics(metrics);
+    // 3. Keyed Diff Tables
+    this.renderKeyedPositions();
+    this.renderKeyedOrders();
+    this.renderIncrementalTrades();
+
+    if (this.activeTab === 'analytics') {
+      this.renderAnalytics(metrics);
+    }
   }
 
-  renderPositionsTable() {
+  // Keyed DOM diff-updates for positions: only changes cells without wiping DOM
+  renderKeyedPositions() {
     if (!this.positionsTableBody) return;
     const paperAccount = this.store.paperAccount;
     if (!paperAccount || paperAccount.positions.length === 0) {
-      this.positionsTableBody.innerHTML = '<tr class="empty-row"><td colspan="11">Нет открытых позиций</td></tr>';
+      if (!this.positionsTableBody.querySelector('.empty-row')) {
+        this.positionsTableBody.innerHTML = '<tr class="empty-row"><td colspan="11">Нет открытых позиций</td></tr>';
+      }
       return;
     }
 
-    this.positionsTableBody.innerHTML = paperAccount.positions.map(pos => {
+    // Remove empty row if present
+    const emptyRow = this.positionsTableBody.querySelector('.empty-row');
+    if (emptyRow) emptyRow.remove();
+
+    const activeIds = new Set();
+
+    for (const pos of paperAccount.positions) {
+      activeIds.add(pos.id);
       const isLong = pos.side === 'BUY';
       const pnlClass = pos.unrealizedPnL >= 0 ? 'text-positive' : 'text-negative';
-      return `
-        <tr>
+      const pnlSign = pos.unrealizedPnL >= 0 ? '+' : '';
+      const pnlText = `${pnlSign}${pos.unrealizedPnL.toFixed(2)} ₽`;
+      const pnlPctText = `${pnlSign}${pos.unrealizedPnLPercent.toFixed(2)}%`;
+      const curPriceText = `${pos.currentPrice.toFixed(2)} ₽`;
+
+      let tr = this.positionsTableBody.querySelector(`tr[data-pos-id="${pos.id}"]`);
+
+      if (tr) {
+        // Row already exists: update ONLY dynamic fields in place!
+        const elPrice = tr.querySelector('[data-field="curPrice"]');
+        if (elPrice && elPrice.textContent !== curPriceText) {
+          elPrice.textContent = curPriceText;
+        }
+
+        const elPnL = tr.querySelector('[data-field="pnl"]');
+        if (elPnL && elPnL.textContent !== pnlText) {
+          elPnL.textContent = pnlText;
+          elPnL.className = pnlClass;
+        }
+
+        const elPnLPct = tr.querySelector('[data-field="pnlPct"]');
+        if (elPnLPct && elPnLPct.textContent !== pnlPctText) {
+          elPnLPct.textContent = pnlPctText;
+          elPnLPct.className = pnlClass;
+        }
+
+        const elLots = tr.querySelector('[data-field="lots"]');
+        if (elLots && elLots.textContent !== String(pos.lots)) {
+          elLots.textContent = pos.lots;
+        }
+
+        const elQty = tr.querySelector('[data-field="qty"]');
+        if (elQty && elQty.textContent !== String(pos.qty)) {
+          elQty.textContent = pos.qty;
+        }
+      } else {
+        // New row: construct and append
+        tr = document.createElement('tr');
+        tr.setAttribute('data-pos-id', pos.id);
+        tr.innerHTML = `
           <td><strong>${pos.symbol}</strong></td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
-          <td>${pos.lots}</td>
-          <td>${pos.qty}</td>
+          <td data-field="lots">${pos.lots}</td>
+          <td data-field="qty">${pos.qty}</td>
           <td>${pos.entryPrice.toFixed(2)} ₽</td>
-          <td>${pos.currentPrice.toFixed(2)} ₽</td>
+          <td data-field="curPrice">${curPriceText}</td>
           <td>${pos.sl ? pos.sl.toFixed(2) + ' ₽' : '—'}</td>
           <td>${pos.tp ? pos.tp.toFixed(2) + ' ₽' : '—'}</td>
-          <td class="${pnlClass}"><strong>${pos.unrealizedPnL >= 0 ? '+' : ''}${pos.unrealizedPnL.toFixed(2)} ₽</strong></td>
-          <td class="${pnlClass}">${pos.unrealizedPnLPercent >= 0 ? '+' : ''}${pos.unrealizedPnLPercent.toFixed(2)}%</td>
+          <td data-field="pnl" class="${pnlClass}"><strong>${pnlText}</strong></td>
+          <td data-field="pnlPct" class="${pnlClass}">${pnlPctText}</td>
           <td>
             <div style="display: flex; gap: 4px;">
               <button class="table-action-btn btn-close-pos" data-close-pos="${pos.id}">✕ Закрыть</button>
               <button class="table-action-btn btn-reverse-pos" data-reverse-pos="${pos.id}">⇄ Перевернуть</button>
             </div>
           </td>
-        </tr>
-      `;
-    }).join('');
+        `;
+        this.positionsTableBody.appendChild(tr);
+      }
+    }
+
+    // Remove closed position rows
+    const allRows = this.positionsTableBody.querySelectorAll('tr[data-pos-id]');
+    allRows.forEach(row => {
+      const rowId = row.getAttribute('data-pos-id');
+      if (!activeIds.has(rowId)) {
+        row.remove();
+      }
+    });
   }
 
-  renderOrdersTable() {
+  // Keyed DOM diff-updates for working orders
+  renderKeyedOrders() {
     if (!this.ordersTableBody) return;
     const paperAccount = this.store.paperAccount;
     if (!paperAccount || paperAccount.orders.length === 0) {
-      this.ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="9">Нет активных заявок</td></tr>';
+      if (!this.ordersTableBody.querySelector('.empty-row')) {
+        this.ordersTableBody.innerHTML = '<tr class="empty-row"><td colspan="9">Нет активных заявок</td></tr>';
+      }
       return;
     }
 
-    this.ordersTableBody.innerHTML = paperAccount.orders.map(ord => {
+    const emptyRow = this.ordersTableBody.querySelector('.empty-row');
+    if (emptyRow) emptyRow.remove();
+
+    const activeIds = new Set();
+
+    for (const ord of paperAccount.orders) {
+      activeIds.add(ord.id);
       const isLong = ord.side === 'BUY';
-      return `
-        <tr>
+      let tr = this.ordersTableBody.querySelector(`tr[data-order-id="${ord.id}"]`);
+
+      if (tr) {
+        // Update price or lots if changed
+        const elPrice = tr.querySelector('[data-field="price"]');
+        const expectedPrice = `${ord.price.toFixed(2)} ₽`;
+        if (elPrice && elPrice.textContent !== expectedPrice) {
+          elPrice.textContent = expectedPrice;
+        }
+      } else {
+        tr = document.createElement('tr');
+        tr.setAttribute('data-order-id', ord.id);
+        tr.innerHTML = `
           <td><span style="font-family: monospace; font-size: 11px;">${ord.id.slice(-6)}</span></td>
           <td><strong>${ord.symbol}</strong></td>
           <td><span style="font-weight: 600;">${ord.type}</span></td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'BUY' : 'SELL'}</span></td>
           <td>${ord.lots} (${ord.qty} шт.)</td>
-          <td><strong>${ord.price.toFixed(2)} ₽</strong></td>
+          <td data-field="price"><strong>${ord.price.toFixed(2)} ₽</strong></td>
           <td>SL: ${ord.sl || '—'} / TP: ${ord.tp || '—'}</td>
           <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(ord.createdTime)}</td>
           <td>
             <button class="table-action-btn" data-cancel-order="${ord.id}" style="color: #f23645;">✕ Отменить</button>
           </td>
-        </tr>
-      `;
-    }).join('');
+        `;
+        this.ordersTableBody.appendChild(tr);
+      }
+    }
+
+    const allRows = this.ordersTableBody.querySelectorAll('tr[data-order-id]');
+    allRows.forEach(row => {
+      const rowId = row.getAttribute('data-order-id');
+      if (!activeIds.has(rowId)) {
+        row.remove();
+      }
+    });
   }
 
-  renderTradesTable() {
+  // Incremental append for trade history (zero re-render of older trades)
+  renderIncrementalTrades() {
     if (!this.tradesTableBody) return;
     const paperAccount = this.store.paperAccount;
     if (!paperAccount || paperAccount.tradeHistory.length === 0) {
-      this.tradesTableBody.innerHTML = '<tr class="empty-row"><td colspan="11">История сделок пуста</td></tr>';
+      if (!this.tradesTableBody.querySelector('.empty-row')) {
+        this.tradesTableBody.innerHTML = '<tr class="empty-row"><td colspan="11">История сделок пуста</td></tr>';
+      }
       return;
     }
 
-    this.tradesTableBody.innerHTML = paperAccount.tradeHistory.map(tr => {
+    const emptyRow = this.tradesTableBody.querySelector('.empty-row');
+    if (emptyRow) emptyRow.remove();
+
+    // Check for newly closed trades not yet in renderedTradesSet
+    for (const tr of paperAccount.tradeHistory) {
+      if (this.renderedTradesSet.has(tr.id)) continue;
+      this.renderedTradesSet.add(tr.id);
+
       const isLong = tr.side === 'BUY';
       const pnlClass = tr.pnl >= 0 ? 'text-positive' : 'text-negative';
-      return `
-        <tr>
-          <td><strong>${tr.symbol}</strong></td>
-          <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
-          <td>${tr.lots} (${tr.qty} шт.)</td>
-          <td>${tr.entryPrice.toFixed(2)} ₽</td>
-          <td>${tr.exitPrice.toFixed(2)} ₽</td>
-          <td class="${pnlClass}"><strong>${tr.pnl >= 0 ? '+' : ''}${tr.pnl.toFixed(2)} ₽</strong></td>
-          <td class="${pnlClass}">${tr.pnlPercent >= 0 ? '+' : ''}${tr.pnlPercent.toFixed(2)}%</td>
-          <td><span style="font-size: 11px; font-weight: 600;">${tr.reason}</span></td>
-          <td style="font-size: 11px; color: var(--tv-text-muted);">${tr.totalCommission} ₽</td>
-          <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(tr.openTime)}</td>
-          <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(tr.closeTime)}</td>
-        </tr>
+      const row = document.createElement('tr');
+      row.setAttribute('data-trade-id', tr.id);
+      row.innerHTML = `
+        <td><strong>${tr.symbol}</strong></td>
+        <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
+        <td>${tr.lots} (${tr.qty} шт.)</td>
+        <td>${tr.entryPrice.toFixed(2)} ₽</td>
+        <td>${tr.exitPrice.toFixed(2)} ₽</td>
+        <td class="${pnlClass}"><strong>${tr.pnl >= 0 ? '+' : ''}${tr.pnl.toFixed(2)} ₽</strong></td>
+        <td class="${pnlClass}">${tr.pnlPercent >= 0 ? '+' : ''}${tr.pnlPercent.toFixed(2)}%</td>
+        <td><span style="font-size: 11px; font-weight: 600;">${tr.reason}</span></td>
+        <td style="font-size: 11px; color: var(--tv-text-muted);">${tr.totalCommission} ₽</td>
+        <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(tr.openTime)}</td>
+        <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(tr.closeTime)}</td>
       `;
-    }).join('');
+      // Prepend newest trade at top of table
+      this.tradesTableBody.insertBefore(row, this.tradesTableBody.firstChild);
+    }
   }
 
   renderAnalytics(m) {
