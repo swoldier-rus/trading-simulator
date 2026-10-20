@@ -390,10 +390,10 @@
   border-color: #f5a623;
 }
 
-/* Badges on Lines */
+/* Badges on Lines (docked to the right side of the chart near price scale) */
 .trade-badge {
   position: absolute;
-  left: 14px;
+  right: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
