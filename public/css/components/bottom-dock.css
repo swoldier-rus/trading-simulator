@@ -310,22 +310,6 @@ body.resizing-dock * {
 }
 
 /* Orders Table Lots Edit Styles */
-.table-lots-clickable {
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 3px;
-  transition: all 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.table-lots-clickable:hover {
-  background: rgba(41, 98, 255, 0.2);
-  color: #fff;
-  text-decoration: underline;
-}
-
 .table-action-btn.btn-edit-order {
   color: var(--tv-accent, #2962ff) !important;
   font-weight: 500;

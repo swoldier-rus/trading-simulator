@@ -415,10 +415,9 @@ export class BottomDockComponent {
         }
 
         const elLots = tr.querySelector('[data-field="lots"]');
-        const expectedLotsText = `${ord.lots} (${ord.qty} шт.) ✏️`;
         if (elLots && elLots.getAttribute('data-lots-val') !== String(ord.lots)) {
           elLots.setAttribute('data-lots-val', String(ord.lots));
-          elLots.innerHTML = `<strong>${ord.lots}</strong> (${ord.qty} шт.) <span style="font-size: 10px; opacity: 0.7;">✏️</span>`;
+          elLots.innerHTML = `<strong>${ord.lots}</strong> (${ord.qty} шт.)`;
         }
       } else {
         tr = document.createElement('tr');
@@ -428,12 +427,12 @@ export class BottomDockComponent {
           <td><strong>${ord.symbol}</strong></td>
           <td><span style="font-weight: 600;">${ord.type}</span></td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'BUY' : 'SELL'}</span></td>
-          <td><span class="table-lots-clickable" data-field="lots" data-lots-val="${ord.lots}" data-edit-order="${ord.id}" title="Кликните, чтобы изменить количество лотов"><strong>${ord.lots}</strong> (${ord.qty} шт.) <span style="font-size: 10px; opacity: 0.7;">✏️</span></span></td>
+          <td><span data-field="lots" data-lots-val="${ord.lots}"><strong>${ord.lots}</strong> (${ord.qty} шт.)</span></td>
           <td data-field="price"><strong>${ord.price.toFixed(2)} ₽</strong></td>
           <td>SL: ${ord.sl || '—'} / TP: ${ord.tp || '—'}</td>
           <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(ord.createdTime)}</td>
           <td>
-            <button class="table-action-btn btn-edit-order" data-edit-order="${ord.id}" title="Изменить количество лотов">✏️ Изменить</button>
+            <button class="table-action-btn btn-edit-order" data-edit-order="${ord.id}" title="Изменить количество лотов">Изменить</button>
             <button class="table-action-btn" data-cancel-order="${ord.id}" style="color: #f23645;">✕ Отменить</button>
           </td>
         `;
