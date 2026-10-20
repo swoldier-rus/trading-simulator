@@ -18,6 +18,7 @@ import { BottomDockComponent } from './components/bottom-dock.js';
 import { ReplayBarComponent } from './components/replay-bar.js';
 import { ModalsComponent } from './components/modals.js';
 import { TradeLinesOverlayComponent } from './components/trade-lines-overlay.js';
+import { QuickTradeWidgetComponent } from './components/quick-trade-widget.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -37,8 +38,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const replayBar = new ReplayBarComponent(store);
   const modals = new ModalsComponent(store);
   const tradeLinesOverlay = new TradeLinesOverlayComponent(store);
+  const quickTradeWidget = new QuickTradeWidgetComponent(store);
 
   store.tradeLinesOverlay = tradeLinesOverlay;
+  store.quickTradeWidget = quickTradeWidget;
   store.indicatorManager = new IndicatorManager(store.chart);
 
   // 3. Connect Paper Trading Account Listeners
@@ -216,6 +219,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (latest) {
           chartController.updateLegend(latest);
           orderPanel.updateQuickPrices(latest.close);
+          if (store.quickTradeWidget) {
+            store.quickTradeWidget.updatePrice(latest);
+          }
           chartController.syncTradeOverlays(latest.close);
         }
       } else {

@@ -304,6 +304,26 @@
             <div class="legend-val-item"><span id="valChange">—</span></div>
             <div class="legend-val-item"><span>Объем:</span><span id="valVolume">—</span></div>
           </div>
+
+          <!-- TradingView-style Instant Quick Trading Buttons Widget -->
+          <div class="chart-quick-trade-widget" id="chartQuickTradeWidget">
+            <button type="button" class="quick-trade-btn sell" id="btnQuickSell" title="Быстрая продажа по рынку (MARKET SELL)">
+              <span class="quick-price" id="quickSellPrice">—</span>
+              <span class="quick-action">ПРОДАТЬ</span>
+            </button>
+            <div class="quick-trade-center">
+              <span class="quick-spread" id="quickSpreadText" title="Спред">0,00</span>
+              <div class="quick-lots-box" title="Количество лотов для быстрых сделок">
+                <button type="button" class="quick-qty-btn" id="btnQuickQtyDec" title="-1 лот">−</button>
+                <input type="number" class="quick-qty-input" id="inputQuickLots" value="1" min="1" max="10000" title="Лоты">
+                <button type="button" class="quick-qty-btn" id="btnQuickQtyInc" title="+1 лот">+</button>
+              </div>
+            </div>
+            <button type="button" class="quick-trade-btn buy" id="btnQuickBuy" title="Быстрая покупка по рынку (MARKET BUY)">
+              <span class="quick-price" id="quickBuyPrice">—</span>
+              <span class="quick-action">КУПИТЬ</span>
+            </button>
+          </div>
         </div>
 
         <!-- TradingView-style Price Axis Plus Button -->
