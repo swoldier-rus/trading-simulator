@@ -83,49 +83,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   };
 
-  // 5. Subsequent Historical Bars Prefetcher
+  // 5. Subsequent Historical Bars Prefetcher (Ensures continuous, non-stopping simulation)
   let isPrefetchingFuture = false;
   let prefetchPromise = null;
 
   async function prefetchSubsequentBars() {
     if (isPrefetchingFuture) return prefetchPromise;
-    if (!simulator.canLoadMoreBars) return null;
 
     const allCandles = simulator.allCandles;
     if (!allCandles || allCandles.length === 0) return null;
 
     const latestBar = allCandles[allCandles.length - 1];
-    const latestTime = latestBar.time;
-    const nowSec = Math.floor(Date.now() / 1000);
     const tf = store.get('currentTimeframe');
     const step = timeframeToSeconds(tf);
-
-    if (latestTime >= nowSec - Math.max(step * 2, 300)) {
-      simulator.canLoadMoreBars = false;
-      return null;
-    }
+    const batchCount = 300;
+    const fromSec = latestBar.time + step;
+    const toSec = fromSec + (batchCount - 1) * step;
 
     isPrefetchingFuture = true;
-    const batchCount = 400;
-    const toSec = Math.min(nowSec, latestTime + batchCount * step);
-    const fromSec = latestTime + 1;
-
     prefetchPromise = (async () => {
       try {
-        const data = await marketDataService.getCandles(store.get('currentSymbol'), store.get('currentFigi'), tf, batchCount, toSec, fromSec);
+        const data = await marketDataService.getCandles(
+          store.get('currentSymbol'),
+          store.get('currentFigi'),
+          tf,
+          batchCount,
+          toSec,
+          fromSec,
+          { forceNetwork: true, lastClose: latestBar.close }
+        );
+
         if (data && data.candles && data.candles.length > 0) {
           const added = simulator.appendHistory(data.candles);
-          if (added === 0) {
-            simulator.canLoadMoreBars = false;
-          }
-          return added;
-        } else {
-          simulator.canLoadMoreBars = false;
-          return 0;
+          if (added > 0) return added;
         }
+
+        // Seamless fallback: continue generating continuous forward bars if exchange data limit is reached
+        const synthAdded = simulator.generateContinuousBars(batchCount);
+        return synthAdded;
       } catch (err) {
-        console.warn('[Prefetch] Error loading subsequent bars:', err);
-        return 0;
+        console.warn('[Prefetch] Fallback to synthetic continuation:', err);
+        return simulator.generateContinuousBars(batchCount);
       } finally {
         isPrefetchingFuture = false;
         prefetchPromise = null;

@@ -119,7 +119,7 @@ class MarketSimulator {
 
     // Check if subsequent bars should be prefetched in advance
     const remaining = this.allCandles.length - this.currentIndex;
-    if (this.canLoadMoreBars && remaining <= this.prefetchThreshold && typeof this.onNeedMoreBars === 'function') {
+    if (remaining <= this.prefetchThreshold && typeof this.onNeedMoreBars === 'function') {
       this.onNeedMoreBars(remaining);
     }
 
@@ -148,7 +148,7 @@ class MarketSimulator {
 
     // Check if subsequent bars should be prefetched in advance
     const remaining = this.allCandles.length - this.currentIndex;
-    if (this.canLoadMoreBars && remaining <= this.prefetchThreshold && typeof this.onNeedMoreBars === 'function') {
+    if (remaining <= this.prefetchThreshold && typeof this.onNeedMoreBars === 'function') {
       this.onNeedMoreBars(remaining);
     }
 
@@ -222,24 +222,50 @@ class MarketSimulator {
     return this.allCandles.length > 0 ? this.allCandles[this.allCandles.length - 1].time : null;
   }
 
+  // Generate seamless continuous forward bars if remote data limit is reached
+  generateContinuousBars(count = 100) {
+    if (this.allCandles.length === 0) return 0;
+    const lastBar = this.allCandles[this.allCandles.length - 1];
+    const prevBar = this.allCandles.length > 1 ? this.allCandles[this.allCandles.length - 2] : null;
+    const stepSec = prevBar ? Math.max(60, lastBar.time - prevBar.time) : 3600;
+
+    let current = lastBar.close;
+    const volatility = 0.007;
+    const newBars = [];
+
+    for (let i = 1; i <= count; i++) {
+      const time = lastBar.time + i * stepSec;
+      const open = current;
+      const change = (Math.random() - 0.495) * 2 * volatility * open;
+      const close = Math.max(open * 0.1, +(open + change).toFixed(2));
+      const high = +(Math.max(open, close) + Math.random() * volatility * open * 0.8).toFixed(2);
+      const low = +(Math.min(open, close) - Math.random() * volatility * open * 0.8).toFixed(2);
+      const volume = Math.floor(Math.random() * 40000 + 5000);
+
+      newBars.push({ time, open, high, low, close, volume });
+      current = close;
+    }
+
+    return this.appendHistory(newBars);
+  }
+
   // Step 1 bar forward
   stepForward() {
     // 1. Check if we need to prefetch subsequent bars ahead of time
     const remaining = this.allCandles.length - this.currentIndex;
-    if (this.isReplayActive && this.canLoadMoreBars && remaining <= this.prefetchThreshold) {
+    if (this.isReplayActive && remaining <= this.prefetchThreshold) {
       if (typeof this.onNeedMoreBars === 'function') {
         this.onNeedMoreBars(remaining);
       }
     }
 
-    // 2. Reached the end of loaded buffer
+    // 2. Reached the end of loaded buffer: fetch or continue seamlessly without pausing
     if (this.currentIndex >= this.allCandles.length) {
-      if (this.canLoadMoreBars && typeof this.onNeedMoreBars === 'function') {
-        // Trigger immediate fetch and do not stop replay
+      if (typeof this.onNeedMoreBars === 'function') {
         this.onNeedMoreBars(0);
         return null;
       }
-      this.pause();
+      this.generateContinuousBars(50);
       return null;
     }
 
@@ -260,10 +286,10 @@ class MarketSimulator {
     }
 
     if (this.currentIndex >= this.allCandles.length) {
-      if (this.canLoadMoreBars && typeof this.onNeedMoreBars === 'function') {
+      if (typeof this.onNeedMoreBars === 'function') {
         this.onNeedMoreBars(0);
       } else {
-        this.pause();
+        this.generateContinuousBars(50);
       }
     }
 
@@ -305,11 +331,10 @@ class MarketSimulator {
   play() {
     if (this.isPlaying) return;
     if (this.currentIndex >= this.allCandles.length) {
-      if (this.canLoadMoreBars && typeof this.onNeedMoreBars === 'function') {
+      if (typeof this.onNeedMoreBars === 'function') {
         this.onNeedMoreBars(0);
       } else {
-        // Only if truly at the end of available history
-        this.currentIndex = Math.max(15, Math.floor(this.allCandles.length * 0.65));
+        this.generateContinuousBars(50);
       }
     }
 

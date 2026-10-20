@@ -20,13 +20,21 @@ function intervalToSeconds(interval) {
  * @param {number|null} toTimestampSec 
  * @returns {Array<{ time: number, open: number, high: number, low: number, close: number, volume: number }>}
  */
-function generateSimulatedCandles(basePrice, interval, count = 400, toTimestampSec = null) {
+function generateSimulatedCandles(basePrice, interval, count = 400, toTimestampSec = null, fromTimestampSec = null) {
   const stepSec = intervalToSeconds(interval);
-  let endTime = toTimestampSec ? Number(toTimestampSec) : Math.floor(Date.now() / 1000);
-  if (interval === '1d') {
-    endTime = Math.floor(endTime / 86400) * 86400;
+  let startTime;
+  let endTime;
+
+  if (fromTimestampSec) {
+    startTime = Number(fromTimestampSec);
+    endTime = startTime + (count - 1) * stepSec;
+  } else {
+    endTime = toTimestampSec ? Number(toTimestampSec) : Math.floor(Date.now() / 1000);
+    if (interval === '1d') {
+      endTime = Math.floor(endTime / 86400) * 86400;
+    }
+    startTime = endTime - (count - 1) * stepSec;
   }
-  const startTime = endTime - (count - 1) * stepSec;
 
   const candles = [];
   let current = Number(basePrice) || 250;

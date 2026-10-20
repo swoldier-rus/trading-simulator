@@ -52,11 +52,12 @@ const API = {
   },
 
   // Fetch candles (from T-Investments or simulated fallback)
-  async getCandles(ticker, figi, interval, count = 350, to = null, from = null) {
+  async getCandles(ticker, figi, interval, count = 350, to = null, from = null, lastClose = null) {
     try {
       let url = `/api/candles?ticker=${encodeURIComponent(ticker)}&figi=${encodeURIComponent(figi || '')}&interval=${encodeURIComponent(interval)}&count=${count}`;
       if (to) url += `&to=${encodeURIComponent(to)}`;
       if (from) url += `&from=${encodeURIComponent(from)}`;
+      if (lastClose) url += `&lastClose=${encodeURIComponent(lastClose)}`;
       const res = await fetch(url);
       return await res.json();
     } catch (err) {

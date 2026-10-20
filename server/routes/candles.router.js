@@ -54,6 +54,10 @@ router.get('/candles', async (req, res) => {
     }
   }
 
+  const fromSec = fromDate ? Math.floor(fromDate.getTime() / 1000) : null;
+  const toSec = hasCustomTo ? Math.floor(toDate.getTime() / 1000) : null;
+  const lastClose = Number(req.query.lastClose) || (matchInst ? matchInst.basePrice : 250);
+
   // Check cache
   const cacheKey = `${ticker}_${figi}_${interval}_${count}_${req.query.to || ''}_${req.query.from || ''}`;
   const cachedData = candleCache.get(cacheKey);
@@ -73,29 +77,33 @@ router.get('/candles', async (req, res) => {
     });
 
     if (candles && candles.length > 0) {
-      const result = {
-        ok: true,
-        source: 'tinkoff',
-        ticker,
-        figi,
-        lot,
-        interval,
-        candles
-      };
-      candleCache.set(cacheKey, result);
-      return res.json(result);
+      // If a specific fromSec was requested (e.g. subsequent bars), ensure we actually return bars >= fromSec
+      const validCandles = fromSec ? candles.filter(c => c.time >= fromSec) : candles;
+
+      if (validCandles.length > 0) {
+        const result = {
+          ok: true,
+          source: 'tinkoff',
+          ticker,
+          figi,
+          lot,
+          interval,
+          candles: validCandles
+        };
+        candleCache.set(cacheKey, result);
+        return res.json(result);
+      }
     }
   }
 
-  // Fallback to high-fidelity simulated candles
-  const basePrice = matchInst ? matchInst.basePrice : 250;
-  const toSec = hasCustomTo ? Math.floor(toDate.getTime() / 1000) : null;
-  const candles = generateSimulatedCandles(basePrice, interval, count, toSec);
+  // Fallback to high-fidelity simulated candles (maintains price continuity with lastClose)
+  const basePrice = lastClose || (matchInst ? matchInst.basePrice : 250);
+  const candles = generateSimulatedCandles(basePrice, interval, count, toSec, fromSec);
 
   const result = {
     ok: true,
     source: 'simulation',
-    note: token ? 'Свечи сгенерированы (инструмент временно недоступен в API)' : 'Демо-режим (введите токен Т-Инвестиций в настройках)',
+    note: token ? 'Свечи продолжены (достигнут предел биржевых данных)' : 'Демо-режим (введите токен Т-Инвестиций в настройках)',
     ticker,
     figi,
     lot,

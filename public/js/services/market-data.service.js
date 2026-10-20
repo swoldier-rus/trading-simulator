@@ -9,26 +9,31 @@ class MarketDataService {
 
   // Smart candle loader: serves from local IndexedDB cache when possible, otherwise fetches & caches
   async getCandles(ticker, figi, timeframe, count = 1200, to = null, from = null, options = {}) {
-    const { forceNetwork = false, backgroundSync = true } = options;
+    const { forceNetwork = false, backgroundSync = true, lastClose = null } = options;
     const cacheKey = `${(ticker || '').toUpperCase()}_${(timeframe || '').toLowerCase()}`;
 
     // 1. Try reading from local IndexedDB cache if not forcing network
     if (!forceNetwork) {
       try {
         let cached = [];
-        if (to) {
+        if (from && to) {
+          cached = await cacheService.getCachedCandles(ticker, timeframe, { fromTime: from, toTime: to });
+        } else if (from) {
+          cached = await cacheService.getCachedCandles(ticker, timeframe, { fromTime: from });
+        } else if (to) {
           cached = await cacheService.getCachedCandles(ticker, timeframe, { toTime: to });
         } else {
           cached = await cacheService.getCachedCandles(ticker, timeframe);
         }
 
-        // If we have a reasonable amount of cached candles (e.g. >= 100 bars)
-        if (cached && cached.length >= 100) {
+        // If from is requested, cache must contain bars >= from
+        const minBarsRequired = from ? 1 : 100;
+        if (cached && cached.length >= minBarsRequired) {
           const meta = await cacheService.getSeriesMeta(ticker, timeframe);
-          const visibleSlice = cached.slice(-count);
+          const visibleSlice = count ? cached.slice(-count) : cached;
 
-          // If background sync is enabled and not requesting a historical 'to' target, refresh delta in background
-          if (backgroundSync && !to) {
+          // If background sync is enabled and not requesting a historical 'to'/'from' target, refresh delta in background
+          if (backgroundSync && !to && !from) {
             this.syncLatestInBackground(ticker, figi, timeframe, count);
           }
 
@@ -47,14 +52,14 @@ class MarketDataService {
     }
 
     // 2. Deduplicate simultaneous network requests for the same params
-    const requestKey = `${cacheKey}_${count}_${to || ''}_${from || ''}`;
+    const requestKey = `${cacheKey}_${count}_${to || ''}_${from || ''}_${lastClose || ''}`;
     if (this.inFlightRequests.has(requestKey)) {
       return await this.inFlightRequests.get(requestKey);
     }
 
     const fetchPromise = (async () => {
       try {
-        const data = await API.getCandles(ticker, figi, timeframe, count, to, from);
+        const data = await API.getCandles(ticker, figi, timeframe, count, to, from, lastClose);
 
         if (data && data.candles && data.candles.length > 0) {
           // Asynchronously persist fetched candles into IndexedDB
