@@ -374,53 +374,16 @@ export class ChartControllerComponent {
 
   syncTradeOverlays(currentPrice) {
     const paperAccount = this.store.paperAccount;
-    if (!this.tradeController || !paperAccount) return;
+    if (!paperAccount) return;
 
-    const currentSymbol = this.store.get('currentSymbol');
-    const tradeState = paperAccount.getOpenAlgoTradeState(currentSymbol);
-    this.tradeController.reconcile(tradeState.orders, tradeState.positions);
+    if (this.tradeController) {
+      const currentSymbol = this.store.get('currentSymbol');
+      const tradeState = paperAccount.getOpenAlgoTradeState(currentSymbol);
+      this.tradeController.reconcile(tradeState.orders, tradeState.positions);
 
-    if (currentPrice) {
-      this.tradeController.onLtp(currentSymbol, currentPrice);
-    }
-
-    if (this.markersLayer) {
-      const markers = [];
-      paperAccount.tradeHistory.forEach(t => {
-        if (t.symbol === currentSymbol) {
-          markers.push({
-            time: t.openTime,
-            position: t.side === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: t.side === 'BUY' ? '#089981' : '#f23645',
-            shape: t.side === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: `${t.side === 'BUY' ? 'BUY' : 'SELL'} ${t.lots}л @ ${t.entryPrice.toFixed(2)}`
-          });
-          markers.push({
-            time: t.closeTime,
-            position: t.side === 'BUY' ? 'aboveBar' : 'belowBar',
-            color: t.pnl >= 0 ? '#089981' : '#f23645',
-            shape: 'circle',
-            text: `EXIT (${t.pnl >= 0 ? '+' : ''}${t.pnl} ₽)`
-          });
-        }
-      });
-
-      paperAccount.positions.forEach(p => {
-        if (p.symbol === currentSymbol) {
-          markers.push({
-            time: p.openTime,
-            position: p.side === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: p.side === 'BUY' ? '#089981' : '#f23645',
-            shape: p.side === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: `OPEN ${p.side === 'BUY' ? 'LONG' : 'SHORT'} ${p.lots}л @ ${p.entryPrice.toFixed(2)}`
-          });
-        }
-      });
-
-      markers.sort((a, b) => a.time - b.time);
-      try {
-        this.markersLayer.setMarkers(markers);
-      } catch (err) {}
+      if (currentPrice) {
+        this.tradeController.onLtp(currentSymbol, currentPrice);
+      }
     }
   }
 

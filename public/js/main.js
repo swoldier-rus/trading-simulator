@@ -18,6 +18,7 @@ import { BottomDockComponent } from './components/bottom-dock.js';
 import { ReplayBarComponent } from './components/replay-bar.js';
 import { ModalsComponent } from './components/modals.js';
 import { TradeLinesOverlayComponent } from './components/trade-lines-overlay.js';
+import { TradeExecutionsOverlayComponent } from './components/trade-executions-overlay.js';
 import { QuickTradeWidgetComponent } from './components/quick-trade-widget.js';
 import { FloatingDrawingToolbarComponent } from './components/floating-drawing-toolbar.js';
 import { DrawingSettingsModalComponent } from './components/drawing-settings-modal.js';
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const replayBar = new ReplayBarComponent(store);
   const modals = new ModalsComponent(store);
   const tradeLinesOverlay = new TradeLinesOverlayComponent(store);
+  const tradeExecutionsOverlay = new TradeExecutionsOverlayComponent(store);
   const quickTradeWidget = new QuickTradeWidgetComponent(store);
   const drawingSettingsModal = new DrawingSettingsModalComponent(store);
   const floatingDrawingToolbar = new FloatingDrawingToolbarComponent(store);
@@ -50,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   store.chartController = chartController;
   store.tradeLinesOverlay = tradeLinesOverlay;
+  store.tradeExecutionsOverlay = tradeExecutionsOverlay;
   store.quickTradeWidget = quickTradeWidget;
   store.drawingSettingsModal = drawingSettingsModal;
   store.floatingDrawingToolbar = floatingDrawingToolbar;
@@ -345,6 +348,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     eventBus,
     components: {
       chartController,
+      tradeLinesOverlay,
+      tradeExecutionsOverlay,
       drawingRail,
       toolbar,
       orderPanel,

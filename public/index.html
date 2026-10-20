@@ -465,6 +465,13 @@
         <!-- Interactive Drag & Drop Trade Lines Overlay (Positions, SL, TP, Orders) -->
         <div id="chartTradeOverlay" class="chart-trade-overlay"></div>
 
+        <!-- Trade Executions Overlay (TradingView-style buy/sell points & track lines) -->
+        <div id="chartExecutionsOverlay" class="chart-executions-overlay">
+          <svg id="chartExecutionsSvg" class="chart-executions-svg"></svg>
+          <div id="chartExecutionsMarkers" class="chart-executions-markers"></div>
+          <div id="chartExecutionTooltip" class="chart-execution-tooltip" style="display: none;"></div>
+        </div>
+
         <!-- Chart Legend -->
         <div class="chart-legend">
           <div class="legend-row">
@@ -564,6 +571,10 @@
               </span>
               <span class="action-text">Сбросить состояние графика</span>
               <span class="action-shortcut">Alt+R</span>
+            </button>
+            <button type="button" class="chart-order-action-btn secondary" id="btnMenuToggleExecutions" title="Показывать точки и линии сделок на графике">
+              <span class="action-icon check-icon" id="menuExecutionsCheck" style="font-weight: 700; color: #2962ff;">✓</span>
+              <span class="action-text">Показывать сделки на графике</span>
             </button>
           </div>
         </div>

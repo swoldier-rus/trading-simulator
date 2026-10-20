@@ -28,6 +28,8 @@ export class ChartOrderMenuComponent {
 
     this.btnMenuActionCustom = document.getElementById('btnMenuActionCustom');
     this.btnMenuResetScale = document.getElementById('btnMenuResetScale');
+    this.btnMenuToggleExecutions = document.getElementById('btnMenuToggleExecutions');
+    this.menuExecutionsCheck = document.getElementById('menuExecutionsCheck');
 
     // State
     this.menuTargetPrice = null;
@@ -198,6 +200,17 @@ export class ChartOrderMenuComponent {
       });
     }
 
+    if (this.btnMenuToggleExecutions) {
+      this.btnMenuToggleExecutions.addEventListener('click', () => {
+        const current = this.store.get('showExecutionsOnChart') !== false;
+        const next = !current;
+        this.store.set('showExecutionsOnChart', next);
+        eventBus.emit('executions:toggle', next);
+        showToast(next ? 'Отображение сделок на графике включено' : 'Отображение сделок на графике скрыто', 'info');
+        this.close();
+      });
+    }
+
     if (this.chartOrderMenu) {
       this.chartOrderMenu.addEventListener('pointerdown', e => e.stopPropagation());
       this.chartOrderMenu.addEventListener('click', e => e.stopPropagation());
@@ -216,6 +229,12 @@ export class ChartOrderMenuComponent {
     }
 
     this.updateDisplay();
+
+    if (this.menuExecutionsCheck) {
+      const showExecs = this.store.get('showExecutionsOnChart') !== false;
+      this.menuExecutionsCheck.textContent = showExecs ? '✓' : '';
+      this.menuExecutionsCheck.style.color = showExecs ? 'var(--tv-blue, #2962ff)' : 'transparent';
+    }
 
     if (!this.chartContainer || !this.chartOrderMenu) return;
 

@@ -7,7 +7,8 @@ const PERSISTED_KEYS = [
   'currentLotSize',
   'currentTimeframe',
   'currentChartType',
-  'isMagnetActive'
+  'isMagnetActive',
+  'showExecutionsOnChart'
 ];
 
 const STORAGE_KEY = 'trading_simulator_saved_state';
@@ -21,6 +22,7 @@ class AppStore {
       currentTimeframe: '1h',
       currentChartType: 'candlestick',
       isMagnetActive: false,
+      showExecutionsOnChart: true,
       currentPrice: 0,
       currentSelectedSide: 'BUY',
       selectedOrderType: 'MARKET',
