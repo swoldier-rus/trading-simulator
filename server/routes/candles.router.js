@@ -1,10 +1,8 @@
-// server/routes/candles.router.js - Historical Candlestick Retrieval with Fallback & Caching
+// server/routes/candles.router.js - Historical Candlestick Retrieval strictly from T-Investments API
 const express = require('express');
 const { configManager } = require('../config/config.manager');
-const { findDefaultInstrument } = require('../config/instruments');
 const { candleCache } = require('../services/cache.service');
 const { tinkoffService } = require('../services/tinkoff.service');
-const { generateSimulatedCandles } = require('../services/simulation.service');
 
 const router = express.Router();
 
@@ -17,26 +15,37 @@ router.get('/candles', async (req, res) => {
   const count = Math.min(3000, Math.max(10, Number(req.query.count) || 800));
   const token = currentConfig.tinkoffToken;
 
-  // Resolve figi and lot from default instruments if not provided
-  const matchInst = findDefaultInstrument(ticker);
-  if (!figi && matchInst) {
-    figi = matchInst.figi;
+  if (!token || token.length < 10) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Токен Т-Инвестиций не настроен. Укажите токен в настройках.',
+      candles: []
+    });
   }
-  const lot = matchInst ? matchInst.lot : 1;
+
+  // Resolve instrument and lot strictly from T-Investments API
+  const inst = await tinkoffService.findInstrumentByTickerOrFigi(figi || ticker, token);
+  if (!inst) {
+    return res.status(404).json({
+      ok: false,
+      error: `Инструмент ${ticker} не найден в T-Investments API`,
+      candles: []
+    });
+  }
+
+  figi = inst.figi;
+  const lot = inst.lot || 1;
 
   // Parse optional 'to' and 'from' parameters
   let toDate = new Date();
-  let hasCustomTo = false;
   if (req.query.to) {
     const toNum = Number(req.query.to);
     if (!isNaN(toNum) && toNum > 0) {
       toDate = new Date(toNum > 10000000000 ? toNum : toNum * 1000);
-      hasCustomTo = true;
     } else {
       const parsed = new Date(req.query.to);
       if (!isNaN(parsed.getTime())) {
         toDate = parsed;
-        hasCustomTo = true;
       }
     }
   }
@@ -55,63 +64,54 @@ router.get('/candles', async (req, res) => {
   }
 
   const fromSec = fromDate ? Math.floor(fromDate.getTime() / 1000) : null;
-  const toSec = hasCustomTo ? Math.floor(toDate.getTime() / 1000) : null;
-  const lastClose = Number(req.query.lastClose) || (matchInst ? matchInst.basePrice : 250);
 
   // Check cache
-  const cacheKey = `${ticker}_${figi}_${interval}_${count}_${req.query.to || ''}_${req.query.from || ''}`;
+  const cacheKey = `${inst.ticker}_${figi}_${interval}_${count}_${req.query.to || ''}_${req.query.from || ''}`;
   const cachedData = candleCache.get(cacheKey);
   if (cachedData) {
     return res.json(cachedData);
   }
 
-  // Attempt live T-Bank data if token and figi available
-  if (token && token.length > 10 && figi) {
-    const candles = await tinkoffService.getCandles({
-      figi,
-      interval,
-      count,
-      toDate,
-      fromDate,
-      token
-    });
+  // Fetch real candles from T-Bank API
+  const candles = await tinkoffService.getCandles({
+    figi,
+    interval,
+    count,
+    toDate,
+    fromDate,
+    token
+  });
 
-    if (candles && candles.length > 0) {
-      // If a specific fromSec was requested (e.g. subsequent bars), ensure we actually return bars >= fromSec
-      const validCandles = fromSec ? candles.filter(c => c.time >= fromSec) : candles;
+  if (candles && candles.length > 0) {
+    const validCandles = fromSec ? candles.filter(c => c.time >= fromSec) : candles;
 
-      if (validCandles.length > 0) {
-        const result = {
-          ok: true,
-          source: 'tinkoff',
-          ticker,
-          figi,
-          lot,
-          interval,
-          candles: validCandles
-        };
-        candleCache.set(cacheKey, result);
-        return res.json(result);
-      }
+    if (validCandles.length > 0) {
+      const result = {
+        ok: true,
+        source: 'tinkoff',
+        ticker: inst.ticker,
+        name: inst.name,
+        figi,
+        lot,
+        currency: inst.currency,
+        interval,
+        candles: validCandles
+      };
+      candleCache.set(cacheKey, result);
+      return res.json(result);
     }
   }
 
-  // Fallback to high-fidelity simulated candles (maintains price continuity with lastClose)
-  const basePrice = lastClose || (matchInst ? matchInst.basePrice : 250);
-  const candles = generateSimulatedCandles(basePrice, interval, count, toSec, fromSec);
-
-  const result = {
-    ok: true,
-    source: 'simulation',
-    note: token ? 'Свечи продолжены (достигнут предел биржевых данных)' : 'Демо-режим (введите токен Т-Инвестиций в настройках)',
-    ticker,
+  // No synthetic / simulated fallback - only real data
+  return res.status(404).json({
+    ok: false,
+    error: 'Биржевые данные недоступны в T-Investments API для указанного диапазона',
+    ticker: inst.ticker,
     figi,
     lot,
     interval,
-    candles
-  };
-
-  return res.json(result);
+    candles: []
+  });
 });
 
 module.exports = router;

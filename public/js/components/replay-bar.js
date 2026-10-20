@@ -385,17 +385,11 @@ export class ReplayBarComponent {
         const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
         showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}`, 'success');
       } else {
-        simulator.jumpToFirstBar(25);
-        if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
-        eventBus.emit('replay:scrubbed');
-        showToast('Симуляция начата с первой доступной свечи', 'info');
+        showToast('Данные за указанный период отсутствуют в T-Invest API', 'warning');
       }
     } catch (err) {
       console.error('Error starting from first date:', err);
-      simulator.jumpToFirstBar(25);
-      if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
-      eventBus.emit('replay:scrubbed');
-      showToast('Симуляция начата с доступной истории', 'info');
+      showToast('Ошибка загрузки истории из T-Invest API', 'error');
     }
   }
 
@@ -446,17 +440,11 @@ export class ReplayBarComponent {
         const dateFormatted = cur ? formatTimestamp(cur.time) : formatTimestamp(snappedRandomSec);
         showToast(`Случайный момент истории: ${dateFormatted}! Слепой тест готов.`, 'success');
       } else {
-        simulator.jumpToRandomBar(null, 25);
-        if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
-        eventBus.emit('replay:scrubbed');
-        showToast('Выбран случайный момент истории для теста', 'success');
+        showToast('Данные за указанный период отсутствуют в T-Invest API', 'warning');
       }
     } catch (err) {
       console.error('Error selecting random historical bar:', err);
-      simulator.jumpToRandomBar(null, 25);
-      if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
-      eventBus.emit('replay:scrubbed');
-      showToast('Выбран случайный момент истории', 'info');
+      showToast('Ошибка загрузки истории из T-Invest API', 'error');
     }
   }
 
