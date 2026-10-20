@@ -56,7 +56,7 @@ export class DrawingRailComponent {
       if (e.key === 'Enter') {
         const dc = this.store.drawingController;
         if (dc && typeof dc.finish === 'function' && dc.activeTool() === 'path') {
-          dc.finish();
+          dc.finish('enter');
         }
       }
     });
@@ -69,6 +69,29 @@ export class DrawingRailComponent {
         }
       });
     }
+
+    this.hookDrawingControllerFinish();
+  }
+
+  hookDrawingControllerFinish() {
+    const dc = this.store.drawingController;
+    if (!dc) {
+      setTimeout(() => this.hookDrawingControllerFinish(), 100);
+      return;
+    }
+
+    if (dc.__finishHooked) return;
+    dc.__finishHooked = true;
+
+    const origFinish = dc.finish;
+    dc.finish = function(source = 'dblclick') {
+      if ((this._tool === 'path' || this._tool === 'polyline') && Array.isArray(this._pending)) {
+        if (source !== 'enter' && this._pending.length > 1) {
+          this._pending.pop();
+        }
+      }
+      return origFinish.call(this);
+    };
   }
 
   highlightTool(tool) {
