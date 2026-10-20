@@ -97,10 +97,10 @@ export class ChartControllerComponent {
         this.store.drawingController = this.drawingController;
       }
 
-      // Initialize OpenAlgo TradeController (order and position lines)
-      if (OpenAlgoCharts.trade && OpenAlgoCharts.trade.TradeController) {
-        this.tradeController = new OpenAlgoCharts.trade.TradeController(this.chart);
-      }
+      // Note: OpenAlgo TradeController canvas lines are replaced by the interactive HTML
+      // drag-and-drop TradeLinesOverlayComponent which provides real-time dragging,
+      // risk/reward calculation badges, and direct SL/TP manipulation.
+      this.tradeController = null;
 
       // Crosshair move handler
       this.chart.subscribeCrosshairMove((param) => {

@@ -17,6 +17,7 @@ import { ChartOrderMenuComponent } from './components/chart-order-menu.js';
 import { BottomDockComponent } from './components/bottom-dock.js';
 import { ReplayBarComponent } from './components/replay-bar.js';
 import { ModalsComponent } from './components/modals.js';
+import { TradeLinesOverlayComponent } from './components/trade-lines-overlay.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -35,7 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const bottomDock = new BottomDockComponent(store);
   const replayBar = new ReplayBarComponent(store);
   const modals = new ModalsComponent(store);
+  const tradeLinesOverlay = new TradeLinesOverlayComponent(store);
 
+  store.tradeLinesOverlay = tradeLinesOverlay;
   store.indicatorManager = new IndicatorManager(store.chart);
 
   // 3. Connect Paper Trading Account Listeners

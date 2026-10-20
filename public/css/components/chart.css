@@ -317,3 +317,268 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Interactive Drag & Drop Trade Lines Overlay (Positions, SL, TP, Orders)   */
+/* -------------------------------------------------------------------------- */
+.chart-trade-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 65px;
+  bottom: 26px;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 45;
+}
+
+.trade-overlay-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: top 0.05s linear;
+}
+
+.trade-overlay-line.dragging {
+  transition: none !important;
+  z-index: 60 !important;
+}
+
+.trade-line-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.position-line.long .trade-line-rail {
+  background: rgba(8, 153, 129, 0.7);
+}
+
+.position-line.short .trade-line-rail {
+  background: rgba(242, 54, 69, 0.7);
+}
+
+.trade-line-rail.dashed {
+  border-top: 1px dashed;
+  background: transparent !important;
+}
+
+.sl-line .trade-line-rail {
+  border-color: #f23645;
+}
+
+.tp-line .trade-line-rail {
+  border-color: #089981;
+}
+
+.trade-line-rail.dotted {
+  border-top: 1px dotted;
+  background: transparent !important;
+}
+
+.order-line.buy .trade-line-rail {
+  border-color: #2962ff;
+}
+
+.order-line.sell .trade-line-rail {
+  border-color: #f5a623;
+}
+
+/* Badges on Lines */
+.trade-badge {
+  position: absolute;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--tv-font);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.position-badge {
+  background-color: #1e222d;
+  border: 1px solid #363a45;
+  color: #ffffff;
+}
+
+.sl-badge {
+  background-color: rgba(35, 14, 18, 0.95);
+  border: 1px solid #f23645;
+  color: #ffffff;
+}
+
+.tp-badge {
+  background-color: rgba(10, 32, 26, 0.95);
+  border: 1px solid #089981;
+  color: #ffffff;
+}
+
+.order-badge {
+  background-color: rgba(20, 26, 42, 0.95);
+  border: 1px solid #2962ff;
+  color: #ffffff;
+}
+
+.order-badge .order-tag.buy {
+  background-color: rgba(41, 98, 255, 0.25);
+  color: #82b1ff;
+}
+
+.order-badge .order-tag.sell {
+  background-color: rgba(245, 166, 35, 0.25);
+  color: #ffd180;
+}
+
+/* Drag Handle Affordance */
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.drag-handle.dragging,
+.drag-handle:active {
+  cursor: grabbing !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.9) !important;
+  transform: scale(1.03);
+}
+
+.drag-grip {
+  color: var(--tv-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: grab;
+}
+
+.drag-handle.dragging .drag-grip {
+  cursor: grabbing !important;
+  color: #ffffff;
+}
+
+/* Badge Tags & Numbers */
+.badge-tag {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-tag.long {
+  background-color: var(--tv-green);
+  color: #ffffff;
+}
+
+.badge-tag.short {
+  background-color: var(--tv-red);
+  color: #ffffff;
+}
+
+.badge-tag.sl-tag {
+  background-color: #f23645;
+  color: #ffffff;
+}
+
+.badge-tag.tp-tag {
+  background-color: #089981;
+  color: #ffffff;
+}
+
+.badge-price {
+  font-weight: 700;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', monospace;
+}
+
+.badge-pnl, .badge-calc, .badge-notional {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+/* Actions inside Position Badge */
+.badge-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.btn-line-add {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-add-sl {
+  background-color: rgba(242, 54, 69, 0.2);
+  color: #f23645;
+  border: 1px solid rgba(242, 54, 69, 0.4);
+}
+.btn-add-sl:hover {
+  background-color: #f23645;
+  color: #ffffff;
+}
+
+.btn-add-tp {
+  background-color: rgba(8, 153, 129, 0.2);
+  color: #089981;
+  border: 1px solid rgba(8, 153, 129, 0.4);
+}
+.btn-add-tp:hover {
+  background-color: #089981;
+  color: #ffffff;
+}
+
+.btn-line-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tv-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.1s ease;
+}
+
+.btn-line-icon:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.btn-line-close:hover {
+  background-color: #f23645 !important;
+  color: #ffffff !important;
+}
+
+.btn-line-reverse:hover {
+  background-color: var(--tv-accent) !important;
+  color: #ffffff !important;
+}
+

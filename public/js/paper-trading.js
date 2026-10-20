@@ -423,6 +423,18 @@ class PaperTradingAccount {
     return true;
   }
 
+  updatePositionSL(positionId, sl) {
+    const pos = this.positions.find(p => p.id === positionId || p.symbol === positionId);
+    if (!pos) return false;
+    return this.updatePositionBrackets(positionId, sl, pos.tp);
+  }
+
+  updatePositionTP(positionId, tp) {
+    const pos = this.positions.find(p => p.id === positionId || p.symbol === positionId);
+    if (!pos) return false;
+    return this.updatePositionBrackets(positionId, pos.sl, tp);
+  }
+
   // Process historical bar: check limit/stop order fills, SL/TP triggers, update PnL
   onCandle(candle, symbol) {
     if (!candle) return [];

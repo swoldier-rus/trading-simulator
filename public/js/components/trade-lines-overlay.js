@@ -1,0 +1,451 @@
+// components/trade-lines-overlay.js - Interactive Drag & Drop Trade Lines Overlay on Chart (Positions, SL, TP, Orders)
+import { eventBus } from '../core/event-bus.js';
+import { formatMoney, showToast } from '../core/utils.js';
+
+export class TradeLinesOverlayComponent {
+  constructor(store) {
+    this.store = store;
+
+    this.chartContainer = document.querySelector('.chart-container');
+    this.overlayEl = document.getElementById('chartTradeOverlay');
+    this.chartEl = document.getElementById('chart');
+
+    // Drag state
+    this.dragState = null; // { type: 'sl'|'tp'|'order', id: string, initialPrice: number, pointerId: number }
+
+    this.init();
+  }
+
+  init() {
+    if (!this.overlayEl || !this.chartContainer) return;
+
+    // Listen to account and market events
+    eventBus.on('account:update', () => this.scheduleRender());
+    eventBus.on('bar:tick', (bar) => this.scheduleRender(bar));
+    eventBus.on('symbol:change', () => this.scheduleRender());
+
+    // Re-render overlay when chart pans or zooms
+    if (this.chartContainer) {
+      this.chartContainer.addEventListener('wheel', () => this.scheduleRender(), { passive: true });
+      this.chartContainer.addEventListener('mousemove', () => {
+        if (!this.dragState) this.scheduleRender();
+      });
+      this.chartContainer.addEventListener('touchmove', () => this.scheduleRender(), { passive: true });
+    }
+
+    // Window resize
+    window.addEventListener('resize', () => this.scheduleRender());
+
+    // Initial render
+    this.scheduleRender();
+  }
+
+  get chart() {
+    return this.store.chart;
+  }
+
+  scheduleRender(latestBar = null) {
+    if (this.dragState) {
+      // While dragging, don't re-create DOM elements to avoid breaking active pointer capture
+      this.updatePnLOnly(latestBar);
+      return;
+    }
+
+    if (this._renderPending) return;
+    this._renderPending = true;
+
+    requestAnimationFrame(() => {
+      this._renderPending = false;
+      this.render(latestBar);
+    });
+  }
+
+  updatePnLOnly(latestBar) {
+    const paperAccount = this.store.paperAccount;
+    if (!paperAccount) return;
+    const currentSymbol = this.store.get('currentSymbol');
+    const pos = paperAccount.positions.find(p => p.symbol === currentSymbol);
+    if (!pos || !this.overlayEl) return;
+
+    const bar = latestBar || (this.store.simulator ? this.store.simulator.getCurrentBar() : null);
+    const curPrice = bar ? bar.close : pos.currentPrice;
+    const isLong = pos.side === 'BUY';
+    const priceDiff = curPrice - pos.entryPrice;
+    const pnl = priceDiff * pos.qty * (isLong ? 1 : -1);
+    const pnlPct = (priceDiff / pos.entryPrice) * 100 * (isLong ? 1 : -1);
+
+    const pnlEl = this.overlayEl.querySelector(`[data-pos-id="${pos.id}"] .badge-pnl`);
+    if (pnlEl) {
+      pnlEl.textContent = `${pnl >= 0 ? '+' : ''}${formatMoney(pnl)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)`;
+      pnlEl.className = `badge-pnl ${pnl >= 0 ? 'text-positive' : 'text-negative'}`;
+    }
+  }
+
+  render(latestBar = null) {
+    if (!this.overlayEl || !this.chart) return;
+    const paperAccount = this.store.paperAccount;
+    if (!paperAccount) {
+      this.overlayEl.innerHTML = '';
+      return;
+    }
+
+    const currentSymbol = this.store.get('currentSymbol');
+    const positions = paperAccount.positions.filter(p => p.symbol === currentSymbol);
+    const orders = paperAccount.orders.filter(o => o.symbol === currentSymbol);
+
+    if (positions.length === 0 && orders.length === 0) {
+      this.overlayEl.innerHTML = '';
+      return;
+    }
+
+    const bar = latestBar || (this.store.simulator ? this.store.simulator.getCurrentBar() : null);
+    const curPrice = bar ? bar.close : (positions[0] ? positions[0].currentPrice : 0);
+
+    const containerHeight = this.chartContainer.clientHeight;
+    let html = '';
+
+    // 1. Render Open Positions and their SL/TP bracket lines
+    for (const pos of positions) {
+      const entryY = this.chart.priceToCoordinate(pos.entryPrice);
+      const isLong = pos.side === 'BUY';
+      const priceDiff = curPrice - pos.entryPrice;
+      const pnl = priceDiff * pos.qty * (isLong ? 1 : -1);
+      const pnlPct = pos.entryPrice > 0 ? (priceDiff / pos.entryPrice) * 100 * (isLong ? 1 : -1) : 0;
+
+      // Position Entry Line
+      if (entryY !== null && entryY >= -20 && entryY <= containerHeight + 20) {
+        html += `
+          <div class="trade-overlay-line position-line ${isLong ? 'long' : 'short'}" style="top: ${entryY}px;" data-pos-id="${pos.id}">
+            <div class="trade-line-rail"></div>
+            <div class="trade-badge position-badge">
+              <span class="badge-tag ${isLong ? 'long' : 'short'}">${isLong ? 'BUY' : 'SELL'} ${pos.lots}л</span>
+              <span class="badge-price">${pos.entryPrice.toFixed(2)} ₽</span>
+              <span class="badge-pnl ${pnl >= 0 ? 'text-positive' : 'text-negative'}">
+                ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
+              </span>
+              <div class="badge-actions">
+                ${!pos.sl ? `<button type="button" class="btn-line-add btn-add-sl" title="Создать Stop Loss" data-action="add-sl" data-pos-id="${pos.id}">+ SL</button>` : ''}
+                ${!pos.tp ? `<button type="button" class="btn-line-add btn-add-tp" title="Создать Take Profit" data-action="add-tp" data-pos-id="${pos.id}">+ TP</button>` : ''}
+                <button type="button" class="btn-line-icon btn-line-reverse" title="Перевернуть позицию" data-action="reverse-pos" data-pos-id="${pos.id}">⇄</button>
+                <button type="button" class="btn-line-icon btn-line-close" title="Закрыть позицию по рынку" data-action="close-pos" data-pos-id="${pos.id}">✕</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Stop Loss Line (if configured)
+      if (pos.sl && pos.sl > 0) {
+        const slY = this.chart.priceToCoordinate(pos.sl);
+        if (slY !== null && slY >= -20 && slY <= containerHeight + 20) {
+          const lossDiff = Math.abs(pos.sl - pos.entryPrice);
+          const lossMoney = -(lossDiff * pos.qty);
+          const lossPct = -(pos.entryPrice > 0 ? (lossDiff / pos.entryPrice) * 100 : 0);
+
+          html += `
+            <div class="trade-overlay-line sl-line" style="top: ${slY}px;" data-line-type="sl" data-pos-id="${pos.id}">
+              <div class="trade-line-rail dashed"></div>
+              <div class="trade-badge sl-badge drag-handle" data-drag-type="sl" data-pos-id="${pos.id}" title="Зажмите и перетащите мышкой для изменения Stop Loss">
+                <span class="drag-grip">⠿</span>
+                <span class="badge-tag sl-tag">SL ${pos.lots}л</span>
+                <span class="badge-price" data-field="price">${pos.sl.toFixed(2)} ₽</span>
+                <span class="badge-calc text-negative" data-field="risk">${formatMoney(lossMoney)} (${lossPct.toFixed(2)}%)</span>
+                <button type="button" class="btn-line-icon btn-line-close" title="Отменить Stop Loss" data-action="remove-sl" data-pos-id="${pos.id}">✕</button>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      // Take Profit Line (if configured)
+      if (pos.tp && pos.tp > 0) {
+        const tpY = this.chart.priceToCoordinate(pos.tp);
+        if (tpY !== null && tpY >= -20 && tpY <= containerHeight + 20) {
+          const gainDiff = Math.abs(pos.tp - pos.entryPrice);
+          const gainMoney = +(gainDiff * pos.qty);
+          const gainPct = +(pos.entryPrice > 0 ? (gainDiff / pos.entryPrice) * 100 : 0);
+
+          html += `
+            <div class="trade-overlay-line tp-line" style="top: ${tpY}px;" data-line-type="tp" data-pos-id="${pos.id}">
+              <div class="trade-line-rail dashed"></div>
+              <div class="trade-badge tp-badge drag-handle" data-drag-type="tp" data-pos-id="${pos.id}" title="Зажмите и перетащите мышкой для изменения Take Profit">
+                <span class="drag-grip">⠿</span>
+                <span class="badge-tag tp-tag">TP ${pos.lots}л</span>
+                <span class="badge-price" data-field="price">${pos.tp.toFixed(2)} ₽</span>
+                <span class="badge-calc text-positive" data-field="reward">+${formatMoney(gainMoney)} (+${gainPct.toFixed(2)}%)</span>
+                <button type="button" class="btn-line-icon btn-line-close" title="Отменить Take Profit" data-action="remove-tp" data-pos-id="${pos.id}">✕</button>
+              </div>
+            </div>
+          `;
+        }
+      }
+    }
+
+    // 2. Render Working / Pending Orders (LIMIT & STOP)
+    for (const ord of orders) {
+      const ordY = this.chart.priceToCoordinate(ord.price);
+      if (ordY !== null && ordY >= -20 && ordY <= containerHeight + 20) {
+        const isLong = ord.side === 'BUY';
+        const notional = ord.price * ord.qty;
+
+        html += `
+          <div class="trade-overlay-line order-line ${isLong ? 'buy' : 'sell'}" style="top: ${ordY}px;" data-line-type="order" data-order-id="${ord.id}">
+            <div class="trade-line-rail dotted"></div>
+            <div class="trade-badge order-badge drag-handle" data-drag-type="order" data-order-id="${ord.id}" title="Зажмите и перетащите мышкой для изменения цены заявки">
+              <span class="drag-grip">⠿</span>
+              <span class="badge-tag order-tag ${isLong ? 'buy' : 'sell'}">${ord.type} ${isLong ? 'BUY' : 'SELL'} ${ord.lots}л</span>
+              <span class="badge-price" data-field="price">${ord.price.toFixed(2)} ₽</span>
+              <span class="badge-notional">${formatMoney(notional)}</span>
+              <button type="button" class="btn-line-icon btn-line-close" title="Отменить заявку" data-action="cancel-order" data-order-id="${ord.id}">✕</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    this.overlayEl.innerHTML = html;
+    this.attachOverlayListeners();
+  }
+
+  attachOverlayListeners() {
+    if (!this.overlayEl) return;
+
+    // 1. Button click actions (Close, Reverse, Remove SL/TP, Cancel order)
+    const actionBtns = this.overlayEl.querySelectorAll('[data-action]');
+    actionBtns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const action = btn.getAttribute('data-action');
+        const posId = btn.getAttribute('data-pos-id');
+        const orderId = btn.getAttribute('data-order-id');
+        this.handleAction(action, posId || orderId);
+      };
+    });
+
+    // 2. Pointer down for Drag & Drop
+    const dragHandles = this.overlayEl.querySelectorAll('.drag-handle');
+    dragHandles.forEach(handle => {
+      handle.onpointerdown = (e) => this.handleDragStart(e, handle);
+    });
+  }
+
+  handleAction(action, id) {
+    const paperAccount = this.store.paperAccount;
+    const simulator = this.store.simulator;
+    if (!paperAccount) return;
+
+    switch (action) {
+      case 'close-pos': {
+        const bar = simulator ? simulator.getCurrentBar() : null;
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          const price = bar ? bar.close : pos.currentPrice;
+          paperAccount.closePosition(pos.id, price, bar ? bar.time : null, 'С графика (Drag-панель)');
+          showToast(`Позиция ${pos.symbol} закрыта с графика`, 'info');
+        }
+        break;
+      }
+      case 'reverse-pos': {
+        const bar = simulator ? simulator.getCurrentBar() : null;
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          const price = bar ? bar.close : pos.currentPrice;
+          paperAccount.reversePosition(pos.id, price, bar ? bar.time : null);
+          showToast(`Позиция ${pos.symbol} перевернута!`, 'info');
+        }
+        break;
+      }
+      case 'add-sl': {
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          const isLong = pos.side === 'BUY';
+          const suggestedSL = +(pos.entryPrice * (isLong ? 0.99 : 1.01)).toFixed(2);
+          paperAccount.updatePositionSL(pos.id, suggestedSL);
+          showToast(`Stop Loss выставлен на ${suggestedSL.toFixed(2)} ₽. Перетащите для настройки!`, 'success');
+        }
+        break;
+      }
+      case 'add-tp': {
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          const isLong = pos.side === 'BUY';
+          const suggestedTP = +(pos.entryPrice * (isLong ? 1.012 : 0.988)).toFixed(2);
+          paperAccount.updatePositionTP(pos.id, suggestedTP);
+          showToast(`Take Profit выставлен на ${suggestedTP.toFixed(2)} ₽. Перетащите для настройки!`, 'success');
+        }
+        break;
+      }
+      case 'remove-sl': {
+        paperAccount.updatePositionSL(id, null);
+        showToast('Stop Loss отменен', 'info');
+        break;
+      }
+      case 'remove-tp': {
+        paperAccount.updatePositionTP(id, null);
+        showToast('Take Profit отменен', 'info');
+        break;
+      }
+      case 'cancel-order': {
+        const ok = paperAccount.cancelOrder(id);
+        if (ok) showToast('Заявка отменена с графика', 'info');
+        break;
+      }
+    }
+  }
+
+  // --- Modern Drag & Drop via Pointer Events ---
+  handleDragStart(e, handle) {
+    if (e.button !== 0) return; // Only primary button
+    if (e.target.closest('button')) return; // Ignore clicks on action buttons inside the badge
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dragType = handle.getAttribute('data-drag-type');
+    const posId = handle.getAttribute('data-pos-id');
+    const orderId = handle.getAttribute('data-order-id');
+    const lineEl = handle.closest('.trade-overlay-line');
+    if (!lineEl) return;
+
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // Safe fallback for synthetic/unsupported pointer capture
+    }
+
+    const chartRect = this.chartContainer.getBoundingClientRect();
+    const currentPriceText = handle.querySelector('[data-field="price"]')?.textContent || '0';
+    const initialPrice = parseFloat(currentPriceText.replace(/[^\d.]/g, '')) || 0;
+
+    this.dragState = {
+      type: dragType,
+      id: posId || orderId,
+      lineEl,
+      handle,
+      pointerId: e.pointerId,
+      chartRect,
+      initialPrice,
+      currentPrice: initialPrice
+    };
+
+    lineEl.classList.add('dragging');
+    handle.classList.add('dragging');
+
+    // Attach move and up listeners to handle
+    handle.onpointermove = (ev) => this.handleDragMove(ev);
+    handle.onpointerup = (ev) => this.handleDragEnd(ev);
+    handle.onpointercancel = (ev) => this.handleDragEnd(ev);
+    handle.onlostpointercapture = (ev) => this.handleDragEnd(ev);
+  }
+
+  handleDragMove(e) {
+    if (!this.dragState || !this.chart) return;
+    e.preventDefault();
+
+    const { lineEl, handle, chartRect, type, id } = this.dragState;
+    const localY = Math.max(10, Math.min(chartRect.height - 30, e.clientY - chartRect.top));
+
+    // Convert pixel Y coordinate to price
+    const rawPrice = this.chart.coordinateToPrice(localY);
+    if (!rawPrice || rawPrice <= 0) return;
+
+    // Snap to 0.05 step
+    const step = 0.05;
+    const newPrice = +(Math.round(rawPrice / step) * step).toFixed(2);
+    this.dragState.currentPrice = newPrice;
+
+    // Update line position immediately for 60 FPS feedback
+    lineEl.style.top = `${localY}px`;
+
+    // Update badge price text
+    const priceField = handle.querySelector('[data-field="price"]');
+    if (priceField) {
+      priceField.textContent = `${newPrice.toFixed(2)} ₽`;
+    }
+
+    // Update projected PnL readout while dragging SL or TP
+    const paperAccount = this.store.paperAccount;
+    if (paperAccount && (type === 'sl' || type === 'tp')) {
+      const pos = paperAccount.positions.find(p => p.id === id);
+      if (pos) {
+        const isLong = pos.side === 'BUY';
+        const diff = Math.abs(newPrice - pos.entryPrice);
+        const money = diff * pos.qty;
+        const pct = pos.entryPrice > 0 ? (diff / pos.entryPrice) * 100 : 0;
+
+        if (type === 'sl') {
+          const riskField = handle.querySelector('[data-field="risk"]');
+          if (riskField) {
+            riskField.textContent = `-${formatMoney(money)} (-${pct.toFixed(2)}%)`;
+          }
+        } else if (type === 'tp') {
+          const rewardField = handle.querySelector('[data-field="reward"]');
+          if (rewardField) {
+            rewardField.textContent = `+${formatMoney(money)} (+${pct.toFixed(2)}%)`;
+          }
+        }
+      }
+    }
+  }
+
+  handleDragEnd(e) {
+    if (!this.dragState) return;
+
+    const { type, id, lineEl, handle, initialPrice, currentPrice, pointerId } = this.dragState;
+    lineEl.classList.remove('dragging');
+    handle.classList.remove('dragging');
+
+    try {
+      if (handle.hasPointerCapture && handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+    } catch (err) {}
+
+    handle.onpointermove = null;
+    handle.onpointerup = null;
+    handle.onpointercancel = null;
+    handle.onlostpointercapture = null;
+
+    this.dragState = null;
+
+    if (Math.abs(currentPrice - initialPrice) >= 0.01) {
+      this.commitPriceChange(type, id, currentPrice);
+    } else {
+      this.scheduleRender();
+    }
+  }
+
+  commitPriceChange(type, id, newPrice) {
+    const paperAccount = this.store.paperAccount;
+    if (!paperAccount) return;
+
+    switch (type) {
+      case 'sl': {
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          paperAccount.updatePositionSL(pos.id, newPrice);
+          showToast(`Stop Loss перемещен: ${newPrice.toFixed(2)} ₽`, 'info');
+        }
+        break;
+      }
+      case 'tp': {
+        const pos = paperAccount.positions.find(p => p.id === id);
+        if (pos) {
+          paperAccount.updatePositionTP(pos.id, newPrice);
+          showToast(`Take Profit перемещен: ${newPrice.toFixed(2)} ₽`, 'info');
+        }
+        break;
+      }
+      case 'order': {
+        const ok = paperAccount.modifyOrder(id, newPrice);
+        if (ok) {
+          showToast(`Заявка перемещена: ${newPrice.toFixed(2)} ₽`, 'info');
+        }
+        break;
+      }
+    }
+
+    this.scheduleRender();
+  }
+}
