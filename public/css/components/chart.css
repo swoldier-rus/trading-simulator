@@ -1,0 +1,319 @@
+/* chart.css - Main Chart Viewport, Legend & Context Order Menu */
+
+/* Main Workspace */
+.tv-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Middle Layout: Left Toolbar + Chart */
+.tv-main-center {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Chart Container */
+.chart-container {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#chart {
+  width: 100%;
+  height: 100%;
+  display: block;
+  position: relative;
+}
+
+/* Chart Watermark / Legend */
+.chart-legend {
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.legend-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.legend-symbol {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.legend-tf {
+  font-size: 12px;
+  color: var(--tv-text-muted);
+}
+
+.legend-values {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.legend-val-item span:first-child {
+  color: var(--tv-text-muted);
+  margin-right: 2px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* TradingView-style Price Axis Plus Button & Chart Order Menu                */
+/* -------------------------------------------------------------------------- */
+.price-axis-plus-btn {
+  position: absolute;
+  right: 56px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--tv-accent);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 35;
+  transition: transform 0.12s ease, background-color 0.15s ease;
+  padding: 0;
+}
+
+.price-axis-plus-btn:hover {
+  background-color: var(--tv-accent-hover);
+  transform: scale(1.18);
+}
+
+.price-axis-plus-btn svg {
+  pointer-events: none;
+}
+
+/* On-Chart Order Context Menu Popover (TradingView exact style) */
+.chart-order-menu {
+  position: absolute;
+  width: 330px;
+  background-color: #1e222d !important;
+  border: 1px solid #434651;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.95);
+  z-index: var(--z-popover, 1000);
+  padding: 12px 14px;
+  font-family: var(--tv-font);
+  user-select: none;
+}
+
+.chart-order-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.chart-order-qty-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tv-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.chart-order-qty-control {
+  display: flex;
+  align-items: center;
+  background-color: #131722;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.order-qty-btn {
+  background: transparent;
+  border: none;
+  color: var(--tv-text);
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+
+.order-qty-btn:hover {
+  background-color: #2a2e39;
+  color: #fff;
+}
+
+.order-qty-input {
+  width: 48px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #2a2e39;
+  border-right: 1px solid #2a2e39;
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.order-qty-input::-webkit-outer-spin-button,
+.order-qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.order-qty-suffix {
+  font-size: 11px;
+  color: var(--tv-text-muted);
+  padding: 0 8px;
+}
+
+/* Quick Lot Chips */
+.chart-order-chips {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.order-chip {
+  flex: 1;
+  background-color: #2a2e39;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #d1d4dc;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 0;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: center;
+}
+
+.order-chip:hover {
+  background-color: #363a45;
+  color: #fff;
+}
+
+.order-chip.active {
+  background-color: var(--tv-accent);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.chart-order-menu-info {
+  font-size: 11px;
+  color: var(--tv-text-muted);
+  text-align: right;
+  margin-bottom: 8px;
+  font-feature-settings: 'tnum';
+}
+
+.chart-order-menu-divider {
+  height: 1px;
+  background-color: #2a2e39;
+  margin: 8px 0 10px 0;
+}
+
+/* Action Rows (TradingView replica) */
+.chart-order-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chart-order-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background-color: #262b3d;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+
+.chart-order-action-btn:hover {
+  background-color: #2f354b;
+  border-color: #505568;
+}
+
+.chart-order-action-btn .action-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.chart-order-action-btn .action-icon.buy {
+  background-color: var(--tv-green);
+  color: #ffffff;
+}
+
+.chart-order-action-btn .action-icon.sell {
+  background-color: var(--tv-red);
+  color: #ffffff;
+}
+
+.chart-order-action-btn.secondary {
+  font-weight: 500;
+  color: var(--tv-text-muted);
+  font-size: 11px;
+  padding: 7px 10px;
+  background-color: transparent;
+  border-color: transparent;
+}
+
+.chart-order-action-btn.secondary:hover {
+  background-color: #1a1e29;
+  color: #fff;
+  border-color: #2a2e39;
+}
+
+.chart-order-action-btn .action-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,79 @@
+/* base.css - Base Resets, Global Layout & Common Primitives */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+body {
+  font-family: var(--tv-font);
+  background-color: var(--tv-bg);
+  color: var(--tv-text);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* Custom TradingView Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #363a45;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484c56;
+}
+
+/* Common Color & Side Badges */
+.text-positive {
+  color: var(--tv-green) !important;
+}
+
+.text-negative {
+  color: var(--tv-red) !important;
+}
+
+.badge-side {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.badge-side.long {
+  background-color: var(--tv-green-bg);
+  color: var(--tv-green);
+  border: 1px solid rgba(8, 153, 129, 0.3);
+}
+
+.badge-side.short {
+  background-color: var(--tv-red-bg);
+  color: var(--tv-red);
+  border: 1px solid rgba(242, 54, 69, 0.3);
+}

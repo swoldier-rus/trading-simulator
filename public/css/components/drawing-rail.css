@@ -1,0 +1,69 @@
+/* drawing-rail.css - Left Vertical Drawing Rail Component */
+
+.tv-left-toolbar {
+  width: 46px;
+  background-color: var(--tv-toolbar-bg);
+  border-right: 1px solid var(--tv-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  z-index: var(--z-left-rail, 40);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.tv-left-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.left-tool-btn {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ffffff;
+  border-radius: var(--tv-radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.left-tool-btn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  pointer-events: none;
+  flex-shrink: 0;
+  color: #ffffff;
+  fill: #ffffff;
+}
+
+.left-tool-btn:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.left-tool-btn.active {
+  background-color: var(--tv-accent);
+  color: #ffffff;
+  border-color: var(--tv-accent);
+}
+
+.left-tool-btn.active svg {
+  color: #ffffff;
+  fill: #ffffff;
+}
+
+.left-tool-divider {
+  width: 24px;
+  height: 1px;
+  background-color: var(--tv-border);
+  margin: 4px 0;
+}

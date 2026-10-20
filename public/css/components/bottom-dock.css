@@ -1,0 +1,249 @@
+/* bottom-dock.css - Bottom Trading Dock Component (Positions, Orders, Trades, Analytics) */
+
+/* Bottom Trading Panel */
+.tv-bottom-panel {
+  height: 210px;
+  background-color: var(--tv-panel-bg);
+  border-top: 1px solid var(--tv-border);
+  display: flex;
+  flex-direction: column;
+  z-index: var(--z-bottom-dock, 30);
+}
+
+.bottom-panel-header {
+  height: 36px;
+  border-bottom: 1px solid var(--tv-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.bottom-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.bottom-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tv-text-muted);
+  border-radius: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  transition: all 0.15s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.bottom-tab:hover {
+  color: var(--tv-text);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.bottom-tab.active {
+  color: #ffffff;
+  background-color: transparent;
+  border-bottom: 2px solid var(--tv-accent);
+  font-weight: 700;
+}
+
+.dock-tab-badge {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.bottom-tab.active .dock-tab-badge {
+  background: var(--tv-accent);
+}
+
+.account-metrics {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 12px;
+}
+
+.metric-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.metric-label {
+  color: var(--tv-text-muted);
+  font-size: 11px;
+}
+
+.metric-value {
+  font-weight: 700;
+  color: #fff;
+}
+
+.metric-value.positive {
+  color: var(--tv-green);
+}
+.metric-value.negative {
+  color: var(--tv-red);
+}
+
+.metric-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+.metric-btn-action {
+  background: transparent;
+  border: 1px solid var(--tv-border);
+  color: var(--tv-text-muted);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.metric-btn-action:hover {
+  background: var(--tv-border);
+  color: #fff;
+}
+
+.bottom-panel-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Positions / Orders Table */
+.data-table-container {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.tv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.tv-table th {
+  background-color: rgba(0, 0, 0, 0.2);
+  color: var(--tv-text-muted);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--tv-border);
+}
+
+.tv-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.tv-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.table-action-btn {
+  background: transparent;
+  border: 1px solid var(--tv-border);
+  color: var(--tv-text);
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.table-action-btn:hover {
+  background: var(--tv-border);
+  color: #fff;
+}
+
+.table-action-btn.btn-close-pos:hover {
+  background: var(--tv-red);
+  border-color: var(--tv-red);
+}
+
+.table-action-btn.btn-reverse-pos:hover {
+  background: var(--tv-accent);
+  border-color: var(--tv-accent);
+}
+
+.btn-close-pos {
+  background: transparent;
+  border: 1px solid var(--tv-border);
+  color: var(--tv-text);
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.btn-close-pos:hover {
+  background: var(--tv-red);
+  color: #fff;
+  border-color: var(--tv-red);
+}
+
+/* Empty State */
+.empty-table-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  color: var(--tv-text-muted);
+  font-size: 13px;
+}
+
+/* Analytics grid */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 14px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.analytics-card {
+  background: var(--tv-bg);
+  border: 1px solid var(--tv-border);
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tv-text-muted);
+  text-transform: uppercase;
+}
+
+.card-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.card-sub {
+  font-size: 11px;
+  color: var(--tv-text-muted);
+}

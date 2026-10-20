@@ -1,0 +1,222 @@
+/* replay-bar.css - Floating Simulation Replay Bar & Dropdown Controls */
+
+/* Floating Replay Bar (TradingView exact replica) */
+.floating-replay-toolbar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1e222d;
+  border: 1px solid #363a45;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: var(--z-replay-bar, 50);
+  user-select: none;
+}
+
+.replay-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #000;
+  background-color: var(--tv-yellow);
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.replay-control-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.1s ease;
+}
+
+.replay-control-btn:hover {
+  background-color: var(--tv-border);
+}
+
+.replay-control-btn.active {
+  background-color: var(--tv-accent);
+  color: #fff;
+}
+
+.replay-speed-select {
+  background: #131722;
+  border: 1px solid var(--tv-border);
+  color: var(--tv-text);
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.replay-info-text {
+  font-size: 11px;
+  color: var(--tv-text-muted);
+  font-family: monospace;
+  min-width: 130px;
+  text-align: right;
+}
+
+.replay-slider {
+  width: 130px;
+  accent-color: var(--tv-accent);
+  cursor: pointer;
+}
+
+.replay-time-badge {
+  background: rgba(41, 98, 255, 0.15);
+  border: 1px solid rgba(41, 98, 255, 0.3);
+  color: #82b1ff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.replay-exit-btn {
+  background: transparent;
+  border: none;
+  color: var(--tv-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.replay-exit-btn:hover {
+  color: var(--tv-red);
+}
+
+/* Replay Button Group in Top Toolbar */
+.replay-btn-group {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.replay-btn-group .tv-btn-replay {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.tv-btn-replay-dropdown {
+  background-color: rgba(245, 166, 35, 0.15);
+  color: var(--tv-yellow);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 5px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.tv-btn-replay-dropdown:hover {
+  background-color: rgba(245, 166, 35, 0.25);
+  color: #fff;
+}
+
+.replay-start-point-btn {
+  display: flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 4px;
+  background-color: rgba(41, 98, 255, 0.15);
+  border: 1px solid rgba(41, 98, 255, 0.3);
+  color: #fff;
+}
+
+.replay-start-point-btn:hover {
+  background-color: rgba(41, 98, 255, 0.3);
+}
+
+.replay-start-point-btn.active {
+  background-color: var(--tv-accent);
+  color: #fff;
+}
+
+.replay-start-point-btn *,
+.tv-btn *,
+.tv-btn-replay-dropdown * {
+  pointer-events: none;
+}
+
+/* Start Point Dropdown Menu (TradingView Replica) */
+.tv-start-point-menu {
+  position: fixed;
+  background-color: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7);
+  z-index: 10000;
+  padding: 6px 0;
+  min-width: 236px;
+  user-select: none;
+}
+
+.start-point-header {
+  padding: 6px 12px 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #787b86;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid #242832;
+  margin-bottom: 4px;
+}
+
+.start-point-item {
+  height: 38px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #d1d4dc;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.start-point-item:hover,
+.start-point-item.active {
+  background-color: #f0f3fa;
+  color: #131722;
+}
+
+.start-point-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.start-point-icon svg {
+  stroke: currentColor;
+}
+
+.start-point-text {
+  flex: 1;
+  white-space: nowrap;
+}

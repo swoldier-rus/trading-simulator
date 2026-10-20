@@ -1,0 +1,64 @@
+/* tokens.css - TradingView Design System Tokens */
+:root {
+  color-scheme: dark;
+
+  /* Theme Backgrounds */
+  --tv-bg: #131722;
+  --tv-panel-bg: #1e222d;
+  --tv-toolbar-bg: #1e222d;
+  --tv-subpanel-bg: #171b26;
+  --tv-hover-bg: #2a2e39;
+
+  /* Borders */
+  --tv-border: #2a2e39;
+  --tv-border-hover: #363a45;
+  --tv-border-subtle: #242832;
+
+  /* Typography Colors */
+  --tv-text: #d1d4dc;
+  --tv-text-muted: #787b86;
+  --tv-text-bright: #ffffff;
+
+  /* Accent & Action Colors */
+  --tv-accent: #2962ff;
+  --tv-accent-hover: #1e53e5;
+  --tv-accent-bg: rgba(41, 98, 255, 0.15);
+
+  /* Bullish / Long / Success */
+  --tv-green: #089981;
+  --tv-green-hover: #067865;
+  --tv-green-bg: rgba(8, 153, 129, 0.15);
+
+  /* Bearish / Short / Danger */
+  --tv-red: #f23645;
+  --tv-red-hover: #d32f3f;
+  --tv-red-bg: rgba(242, 54, 69, 0.15);
+
+  /* Warning / Highlights */
+  --tv-yellow: #f5a623;
+  --tv-yellow-hover: #df9419;
+  --tv-yellow-bg: rgba(245, 166, 35, 0.15);
+
+  /* Typography & Layout */
+  --tv-font: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+  --tv-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --tv-radius: 4px;
+  --tv-radius-sm: 2px;
+  --tv-radius-lg: 8px;
+
+  /* Z-Index Hierarchy */
+  --z-base: 1;
+  --z-header: 100;
+  --z-left-rail: 90;
+  --z-side-panel: 95;
+  --z-bottom-dock: 80;
+  --z-chart-overlay: 110;
+  --z-replay-bar: 120;
+  --z-popover: 200;
+  --z-modal: 500;
+  --z-toast: 1000;
+
+  /* Transitions */
+  --tv-transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --tv-transition-normal: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
