@@ -133,15 +133,24 @@ export class ToolbarComponent {
       this.chartTypeDropdown.style.display = this.chartTypeDropdown.style.display === 'none' ? 'block' : 'none';
     };
 
+    this.chartTypeItems = this.chartTypeDropdown.querySelectorAll('.chart-type-item');
+
     this.chartTypeItems.forEach(item => {
       item.onclick = () => {
         const type = item.getAttribute('data-type');
+        const shortText = item.getAttribute('data-short') || item.querySelector('.chart-type-label')?.textContent.trim() || type;
+        const iconSpan = item.querySelector('.chart-type-icon');
+
         this.chartTypeItems.forEach(i => i.classList.remove('active'));
         item.classList.add('active');
 
         this.store.set('currentChartType', type);
+
+        if (this.chartTypeIcon && iconSpan) {
+          this.chartTypeIcon.innerHTML = iconSpan.innerHTML;
+        }
         if (this.chartTypeText) {
-          this.chartTypeText.textContent = item.textContent.replace(/[^\p{L}\s]/gu, '').trim();
+          this.chartTypeText.textContent = shortText;
         }
         this.chartTypeDropdown.style.display = 'none';
 
@@ -152,6 +161,22 @@ export class ToolbarComponent {
         }
       };
     });
+
+    // Sync initial state from store if present
+    const initialType = this.store.get('currentChartType') || 'candlestick';
+    const activeItem = this.chartTypeDropdown.querySelector(`.chart-type-item[data-type="${initialType}"]`);
+    if (activeItem) {
+      this.chartTypeItems.forEach(i => i.classList.remove('active'));
+      activeItem.classList.add('active');
+      const iconSpan = activeItem.querySelector('.chart-type-icon');
+      const shortText = activeItem.getAttribute('data-short') || activeItem.querySelector('.chart-type-label')?.textContent.trim();
+      if (this.chartTypeIcon && iconSpan) {
+        this.chartTypeIcon.innerHTML = iconSpan.innerHTML;
+      }
+      if (this.chartTypeText && shortText) {
+        this.chartTypeText.textContent = shortText;
+      }
+    }
   }
 
   initFullscreen() {

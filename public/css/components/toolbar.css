@@ -244,30 +244,68 @@
   position: absolute;
   top: 100%;
   left: 0;
-  background-color: var(--tv-panel-bg);
-  border: 1px solid var(--tv-border);
-  border-radius: var(--tv-radius);
+  background-color: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   z-index: 1000;
-  min-width: 170px;
+  min-width: 190px;
   padding: 4px 0;
   margin-top: 4px;
 }
 
 .chart-type-item {
-  padding: 8px 14px;
+  padding: 6px 12px;
   font-size: 13px;
-  color: var(--tv-text);
+  color: #d1d4dc;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  transition: all 0.1s ease;
+  gap: 10px;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  user-select: none;
 }
 
-.chart-type-item:hover, .chart-type-item.active {
-  background-color: rgba(41, 98, 255, 0.2);
-  color: #fff;
+.chart-type-item:hover {
+  background-color: #2a2e39;
+  color: #ffffff;
+}
+
+.chart-type-item.active {
+  background-color: rgba(41, 98, 255, 0.18);
+  color: #2962ff;
+}
+
+.chart-type-item.active:hover {
+  background-color: rgba(41, 98, 255, 0.28);
+  color: #2962ff;
+}
+
+.chart-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.chart-type-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.chart-type-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.chart-type-divider {
+  height: 1px;
+  background-color: #2a2e39;
+  margin: 4px 0;
 }
 
 /* Quick Order Buttons in Header */
