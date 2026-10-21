@@ -29,20 +29,27 @@ export class TradeExecutionsOverlayComponent {
     eventBus.on('executions:toggle', () => this.scheduleRender());
 
     // Re-render when chart pans or zooms
-    this.chartContainer.addEventListener('wheel', () => this.scheduleRender(), { passive: true });
+    this.chartContainer.addEventListener('wheel', () => {
+      this.hideTooltip();
+      this.scheduleRender();
+    }, { passive: true });
 
     this.chartContainer.addEventListener('mousemove', (e) => {
       if (e.buttons === 1) {
+        this.hideTooltip();
         this.scheduleRender();
       }
     });
 
-    this.chartContainer.addEventListener('touchmove', () => this.scheduleRender(), { passive: true });
+    this.chartContainer.addEventListener('touchmove', () => {
+      this.hideTooltip();
+      this.scheduleRender();
+    }, { passive: true });
 
     // Window resize
     window.addEventListener('resize', () => this.scheduleRender());
 
-    // Subscribe to chart visible range changes
+    // Subscribe to chart visible range changes and animation frame hooks
     this._subscribeChartRangeChange();
 
     // Event delegation for markers hover
@@ -53,18 +60,70 @@ export class TradeExecutionsOverlayComponent {
   }
 
   _subscribeChartRangeChange() {
-    if (this._hasSubscribedRangeChange) return;
     const chart = this.chart;
-    if (chart && typeof chart.timeScale === 'function') {
-      try {
-        const timeScale = chart.timeScale();
-        if (timeScale && typeof timeScale.subscribeVisibleLogicalRangeChange === 'function') {
-          timeScale.subscribeVisibleLogicalRangeChange(() => this.scheduleRender());
-          this._hasSubscribedRangeChange = true;
-        }
-      } catch (err) {
-        console.warn('Failed to subscribe to visible logical range change:', err);
+    if (!chart) return;
+
+    // 1. Hook into OpenAlgoCharts animation/paint loop for immediate 60fps frame sync
+    if (typeof chart._onFrame === 'function' && !chart._hasExecutionsFrameHook) {
+      chart._hasExecutionsFrameHook = true;
+      const origOnFrame = chart._onFrame;
+      const self = this;
+      chart._onFrame = function(...args) {
+        const res = origOnFrame.apply(this, args);
+        self.render();
+        return res;
+      };
+    }
+
+    if (this._hasSubscribedRangeChange) return;
+
+    // 2. Subscribe to OpenAlgoCharts native events
+    if (typeof chart.on === 'function') {
+      chart.on('zoom', () => {
+        this.hideTooltip();
+        this.render();
+      });
+      chart.on('pan', () => {
+        this.hideTooltip();
+        this.render();
+      });
+      chart.on('drag', () => {
+        this.hideTooltip();
+        this.render();
+      });
+      chart.on('resize', () => this.render());
+      chart.on('layout:change', () => this.render());
+    }
+
+    // 3. Hook into timeScale (works for both getter/object and function)
+    const timeScale = chart._timeScale || (typeof chart.timeScale === 'function' ? chart.timeScale() : chart.timeScale);
+    if (timeScale) {
+      if (typeof timeScale._onChange === 'function') {
+        const origOnChange = timeScale._onChange;
+        timeScale._onChange = (e) => {
+          if (origOnChange) origOnChange(e);
+          this.hideTooltip();
+          this.render();
+        };
+      } else if (typeof timeScale.setChangeHandler === 'function') {
+        timeScale.setChangeHandler(() => {
+          this.hideTooltip();
+          this.render();
+        });
       }
+
+      if (typeof timeScale.subscribeVisibleLogicalRangeChange === 'function') {
+        try {
+          timeScale.subscribeVisibleLogicalRangeChange(() => {
+            this.hideTooltip();
+            this.render();
+          });
+        } catch (err) {
+          console.warn('Failed to subscribe to visible logical range change:', err);
+        }
+      }
+
+      this._hasSubscribedRangeChange = true;
     }
   }
 
