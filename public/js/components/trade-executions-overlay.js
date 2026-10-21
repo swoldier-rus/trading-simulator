@@ -1,6 +1,5 @@
-// components/trade-executions-overlay.js - TradingView-Style Trade Executions Overlay (Buy/Sell Points, Trade Lines & Hover Tooltips)
+// components/trade-executions-overlay.js - TradingView-Style Trade Executions Overlay (Markers on Candles, No Track Lines, Grouped Tooltips)
 import { eventBus } from '../core/event-bus.js';
-import { formatMoney } from '../core/utils.js';
 
 export class TradeExecutionsOverlayComponent {
   constructor(store) {
@@ -14,7 +13,8 @@ export class TradeExecutionsOverlayComponent {
 
     this._renderPending = false;
     this._hasSubscribedRangeChange = false;
-    this.hoveredTradeId = null;
+    this.hoveredGroupId = null;
+    this.groupsMap = new Map();
 
     this.init();
   }
@@ -45,7 +45,7 @@ export class TradeExecutionsOverlayComponent {
     // Subscribe to chart visible range changes
     this._subscribeChartRangeChange();
 
-    // Event delegation for markers & lines hover
+    // Event delegation for markers hover
     this.attachHoverListeners();
 
     // Initial render
@@ -86,13 +86,13 @@ export class TradeExecutionsOverlayComponent {
     if (!this.overlayEl) return;
 
     this.overlayEl.addEventListener('mouseenter', (e) => {
-      const target = e.target.closest('[data-trade-id]');
+      const target = e.target.closest('[data-group-id]');
       if (!target) return;
       this.handleElementHover(target, e);
     }, true);
 
     this.overlayEl.addEventListener('mousemove', (e) => {
-      const target = e.target.closest('[data-trade-id]');
+      const target = e.target.closest('[data-group-id]');
       if (target) {
         this.handleElementHover(target, e);
       } else {
@@ -125,241 +125,164 @@ export class TradeExecutionsOverlayComponent {
     ];
   }
 
-  handleElementHover(element, event) {
-    const tradeId = element.getAttribute('data-trade-id');
-    const entryId = element.getAttribute('data-entry-id');
-    const markerType = element.getAttribute('data-marker-type') || 'line';
-    if (!tradeId) return;
+  findCandleForTime(time) {
+    if (!time) return null;
+    const sim = this.store.simulator;
+    const candles = sim && Array.isArray(sim.allCandles) ? sim.allCandles : null;
+    if (!candles || candles.length === 0) return null;
 
-    this.hoveredTradeId = tradeId;
-    this.highlightTrade(tradeId, true);
+    // 1. Exact match
+    const exact = candles.find(c => c.time === time);
+    if (exact) return exact;
 
-    const paperAccount = this.store.paperAccount;
-    if (!paperAccount) return;
-
-    // Search in tradeHistory first, then positions
-    const trade = paperAccount.tradeHistory.find(t => t.id === tradeId) ||
-                  paperAccount.positions.find(p => p.id === tradeId);
-    if (trade) {
-      const entries = this.getTradeEntries(trade);
-      const entry = (entryId ? entries.find(e => e.id === entryId) : null) || entries[0];
-      this.showTooltip(trade, event, markerType, entry, entries);
+    // 2. Binary search for largest c.time <= time
+    let low = 0;
+    let high = candles.length - 1;
+    let best = null;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (candles[mid].time <= time) {
+        best = candles[mid];
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
     }
+    return best || candles[0];
   }
 
-  highlightTrade(tradeId, isHighlighted) {
-    if (!this.overlayEl) return;
-    const elements = this.overlayEl.querySelectorAll(`[data-trade-id="${tradeId}"]`);
-    elements.forEach(el => {
-      if (isHighlighted) el.classList.add('highlighted');
-      else el.classList.remove('highlighted');
-    });
-  }
-
-  hideTooltip() {
-    if (this.hoveredTradeId) {
-      this.highlightTrade(this.hoveredTradeId, false);
-      this.hoveredTradeId = null;
-    }
-    if (this.tooltipEl) {
-      this.tooltipEl.style.display = 'none';
-      this.tooltipEl.classList.remove('visible');
-    }
-  }
-
-  formatDate(timeSec) {
+  formatTradeDate(timeSec) {
     if (!timeSec) return '—';
     const d = new Date(timeSec * 1000);
     return d.toLocaleString('ru-RU', {
-      day: '2-digit',
+      weekday: 'short',
+      day: 'numeric',
       month: 'short',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     });
   }
 
-  showTooltip(trade, event, markerType, entry, entries = []) {
+  handleElementHover(element, event) {
+    const groupId = element.getAttribute('data-group-id');
+    if (!groupId) return;
+
+    if (this.hoveredGroupId && this.hoveredGroupId !== groupId) {
+      const prevEl = this.overlayEl.querySelector(`[data-group-id="${this.hoveredGroupId}"]`);
+      if (prevEl) prevEl.classList.remove('highlighted');
+    }
+
+    this.hoveredGroupId = groupId;
+    element.classList.add('highlighted');
+
+    const group = this.groupsMap.get(groupId);
+    if (group) {
+      this.showTooltip(group, element, event);
+    }
+  }
+
+  hideTooltip() {
+    if (this.hoveredGroupId) {
+      const el = this.overlayEl?.querySelector(`[data-group-id="${this.hoveredGroupId}"]`);
+      if (el) el.classList.remove('highlighted');
+      this.hoveredGroupId = null;
+    }
+    if (this.tooltipEl) {
+      this.tooltipEl.style.display = 'none';
+      this.tooltipEl.classList.remove('visible', 'buy', 'sell');
+    }
+  }
+
+  showTooltip(group, element, event) {
     if (!this.tooltipEl || !this.overlayEl) return;
 
-    const isClosed = trade.exitPrice !== undefined && trade.closeTime !== undefined;
-    const isLong = (entry ? entry.side : trade.side) === 'BUY';
-    const currentSymbol = this.store.get('currentSymbol') || trade.symbol || 'SBER';
-    const currentTF = this.store.get('currentTimeframe') || '1ч';
+    const isBuy = group.side === 'BUY';
+    const count = group.trades.length;
+    const counterClass = isBuy ? 'blueCounter' : 'redCounter';
+    const descriptorText = isBuy ? 'Купить' : 'Продать';
 
-    const pnl = isClosed ? trade.pnl : (trade.unrealizedPnL || 0);
-    const pnlPct = isClosed ? trade.pnlPercent : (trade.unrealizedPnLPercent || 0);
-    const isProfit = pnl >= 0;
-    const pnlFormatted = `${pnl >= 0 ? '+' : ''}${formatMoney(pnl)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)`;
+    let contentHtml = '';
 
-    const totalEntries = entries.length;
-    const entryIndex = entry ? entry.index : 1;
+    if (count === 1) {
+      // Single trade layout (TradingView style 1-in-bar)
+      const t = group.trades[0];
+      const units = t.lots || 1;
+      const priceStr = Number(t.price).toFixed(2);
+      const dateStr = this.formatTradeDate(t.time);
 
-    let badgeText = '';
-    let badgeClass = '';
-    let dateStr = '';
-
-    if (markerType === 'exit') {
-      badgeText = '● Закрытие сделки';
-      badgeClass = 'exit';
-      dateStr = this.formatDate(trade.closeTime);
-    } else if (markerType === 'entry') {
-      if (totalEntries > 1) {
-        badgeText = entryIndex === 1
-          ? `▲ Вход #1 (${isLong ? 'BUY' : 'SELL'})`
-          : `▲ Добор #${entryIndex} (${isLong ? 'BUY' : 'SELL'})`;
-      } else {
-        badgeText = isLong
-          ? (isClosed ? '▲ Покупка (BUY)' : '▲ Позиция LONG')
-          : (isClosed ? '▼ Продажа (SELL)' : '▼ Позиция SHORT');
-      }
-      badgeClass = isLong ? 'buy' : 'sell';
-      dateStr = this.formatDate(entry ? entry.time : trade.openTime);
-    } else {
-      // Line hover
-      if (totalEntries > 1 && entryIndex > 1) {
-        badgeText = `▲ Трейд (Добор #${entryIndex})`;
-      } else {
-        badgeText = isLong ? '▲ Трейд LONG' : '▼ Трейд SHORT';
-      }
-      badgeClass = isLong ? 'buy' : 'sell';
-      dateStr = this.formatDate(entry ? entry.time : trade.openTime);
-    }
-
-    let rowsHtml = '';
-
-    if (markerType === 'entry' || markerType === 'line') {
-      const thisLots = entry ? entry.lots : trade.lots;
-      const thisQty = entry ? entry.qty : trade.qty;
-      const thisPrice = entry ? entry.price : trade.entryPrice;
-
-      rowsHtml += `
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">${totalEntries > 1 ? `Цена входа #${entryIndex}:` : 'Цена входа:'}</span>
-          <span class="exec-tt-val">${thisPrice.toFixed(2)} ₽</span>
-        </div>
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">${totalEntries > 1 ? `Объем входа #${entryIndex}:` : 'Объем сделки:'}</span>
-          <span class="exec-tt-val">${thisLots} ${thisLots === 1 ? 'лот' : 'лота'} (${thisQty} шт.)</span>
+      contentHtml = `
+        <div class="tv-exec-card">
+          <div class="tv-exec-title title-IrTYfkDq">
+            <span class="tv-exec-counter counter-IrTYfkDq ${counterClass} ${counterClass}-IrTYfkDq">1</span>
+            <span class="tv-exec-descriptor descriptor-IrTYfkDq">${descriptorText}</span>
+          </div>
+          <div class="tv-exec-single-row singleTradeRow-IrTYfkDq">
+            <span class="tv-exec-units-price unitsPrice-IrTYfkDq">${units} @ ${priceStr}</span>
+            <span class="tv-exec-date date-IrTYfkDq">${dateStr}</span>
+          </div>
         </div>
       `;
-
-      if (totalEntries > 1) {
-        const cumLots = entry && entry.cumulativeLots ? entry.cumulativeLots : trade.lots;
-        const cumQty = entry && entry.cumulativeQty ? entry.cumulativeQty : trade.qty;
-        const avgPrice = entry && entry.avgPriceAtEntry ? entry.avgPriceAtEntry : trade.entryPrice;
-        rowsHtml += `
-          <div class="exec-tt-divider" style="margin: 4px 0;"></div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Средняя цена позиции:</span>
-            <span class="exec-tt-val" style="color: #f5a623;">${avgPrice.toFixed(2)} ₽</span>
-          </div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Всего в позиции:</span>
-            <span class="exec-tt-val">${cumLots} лот. (${cumQty} шт.)</span>
-          </div>
-        `;
-      }
-
-      if (isClosed) {
-        rowsHtml += `
-          <div class="exec-tt-divider" style="margin: 4px 0;"></div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Цена выхода:</span>
-            <span class="exec-tt-val">${trade.exitPrice.toFixed(2)} ₽</span>
-          </div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Общий PnL сделки:</span>
-            <span class="exec-tt-val ${isProfit ? 'profit' : 'loss'}">${pnlFormatted}</span>
-          </div>
-        `;
-        if (trade.reason) {
-          rowsHtml += `
-            <div class="exec-tt-row">
-              <span class="exec-tt-label">Причина закрытия:</span>
-              <span class="exec-tt-val">${trade.reason}</span>
-            </div>
-          `;
-        }
-      } else {
-        rowsHtml += `
-          <div class="exec-tt-divider" style="margin: 4px 0;"></div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Текущая цена:</span>
-            <span class="exec-tt-val">${(trade.currentPrice || trade.entryPrice).toFixed(2)} ₽</span>
-          </div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Нереализ. PnL:</span>
-            <span class="exec-tt-val ${isProfit ? 'profit' : 'loss'}">${pnlFormatted}</span>
-          </div>
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Статус:</span>
-            <span class="exec-tt-val" style="color: #2962ff;">В рынке (Активная)</span>
-          </div>
-        `;
-      }
     } else {
-      // Exit marker hover
-      rowsHtml += `
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">${totalEntries > 1 ? `Средняя входа (${totalEntries} входа):` : 'Цена входа:'}</span>
-          <span class="exec-tt-val">${trade.entryPrice.toFixed(2)} ₽</span>
-        </div>
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">Цена выхода:</span>
-          <span class="exec-tt-val">${trade.exitPrice.toFixed(2)} ₽</span>
-        </div>
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">Общий объем:</span>
-          <span class="exec-tt-val">${trade.lots} лот. (${trade.qty} шт.)</span>
-        </div>
-        <div class="exec-tt-row">
-          <span class="exec-tt-label">Итоговый результат:</span>
-          <span class="exec-tt-val ${isProfit ? 'profit' : 'loss'}">${pnlFormatted}</span>
+      // Multiple trades layout (TradingView style 2+ in bar)
+      const totalUnits = group.trades.reduce((sum, t) => sum + (t.lots || 1), 0);
+      const weightedSum = group.trades.reduce((sum, t) => sum + (t.lots || 1) * t.price, 0);
+      const avgPrice = totalUnits > 0 ? (weightedSum / totalUnits).toFixed(2) : (group.trades[0].price).toFixed(2);
+
+      const tableRowsHtml = group.trades.map(t => {
+        const units = t.lots || 1;
+        const priceStr = Number(t.price).toFixed(2);
+        const dateStr = this.formatTradeDate(t.time);
+        return `
+          <tr class="tv-exec-table-row tableRow-IrTYfkDq">
+            <td class="tv-exec-units units-IrTYfkDq">${units}</td>
+            <td class="tv-exec-at atDecoration-IrTYfkDq">@</td>
+            <td class="tv-exec-price price-IrTYfkDq">${priceStr}</td>
+            <td class="tv-exec-date date-IrTYfkDq">${dateStr}</td>
+          </tr>
+        `;
+      }).join('');
+
+      contentHtml = `
+        <div class="tv-exec-card">
+          <div class="tv-exec-title title-IrTYfkDq">
+            <span class="tv-exec-counter counter-IrTYfkDq ${counterClass} ${counterClass}-IrTYfkDq">${count}</span>
+            <span class="tv-exec-descriptor descriptor-IrTYfkDq">${descriptorText}</span>
+          </div>
+          <div class="tv-exec-subtitle subtitle-IrTYfkDq">
+            <span>${totalUnits} @ ${avgPrice} avg price</span>
+          </div>
+          <div class="tv-exec-table-title tableTitle-IrTYfkDq">TRADES</div>
+          <table class="tv-exec-table table-IrTYfkDq">
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
         </div>
       `;
-      if (trade.reason) {
-        rowsHtml += `
-          <div class="exec-tt-row">
-            <span class="exec-tt-label">Причина:</span>
-            <span class="exec-tt-val">${trade.reason}</span>
-          </div>
-        `;
-      }
     }
 
-    this.tooltipEl.innerHTML = `
-      <div class="exec-tt-header">
-        <span class="exec-tt-badge ${badgeClass}">${badgeText}</span>
-        <span class="exec-tt-symbol">${currentSymbol} • ${currentTF}</span>
-      </div>
-      <div class="exec-tt-date">${dateStr}</div>
-      <div class="exec-tt-divider"></div>
-      <div class="exec-tt-grid">
-        ${rowsHtml}
-      </div>
-    `;
-
+    this.tooltipEl.innerHTML = contentHtml;
+    this.tooltipEl.className = `chart-execution-tooltip visible ${isBuy ? 'buy' : 'sell'}`;
     this.tooltipEl.style.display = 'block';
-    this.tooltipEl.classList.add('visible');
 
-    // Position tooltip relative to cursor / marker within overlay
+    // Position tooltip relative to marker
     const overlayRect = this.overlayEl.getBoundingClientRect();
+    const targetRect = element.getBoundingClientRect();
     const ttRect = this.tooltipEl.getBoundingClientRect();
 
-    let targetX = event.clientX - overlayRect.left;
-    let targetY = event.clientY - overlayRect.top;
+    const markerCenterX = targetRect.left - overlayRect.left + targetRect.width / 2;
+    const markerCenterY = targetRect.top - overlayRect.top + targetRect.height / 2;
 
-    let posX = targetX - ttRect.width / 2;
-    let posY = targetY - ttRect.height - 12;
-
-    if (posX < 8) posX = 8;
+    let posX = markerCenterX + 16;
     if (posX + ttRect.width > overlayRect.width - 8) {
-      posX = overlayRect.width - ttRect.width - 8;
+      posX = markerCenterX - ttRect.width - 16;
     }
+    if (posX < 8) posX = 8;
 
-    if (posY < 8) {
-      posY = targetY + 20;
+    let posY = markerCenterY - ttRect.height / 2;
+    if (posY < 8) posY = 8;
+    if (posY + ttRect.height > overlayRect.height - 8) {
+      posY = overlayRect.height - ttRect.height - 8;
     }
 
     this.tooltipEl.style.left = `${Math.round(posX)}px`;
@@ -367,187 +290,179 @@ export class TradeExecutionsOverlayComponent {
   }
 
   render() {
-    if (!this.overlayEl || !this.svgEl || !this.markersEl || !this.chart) return;
+    if (!this.overlayEl || !this.markersEl || !this.chart) return;
     this._subscribeChartRangeChange();
+
+    // Ensure svg lines are always empty (no dashed lines on chart!)
+    if (this.svgEl) {
+      this.svgEl.innerHTML = '';
+    }
 
     // Check visibility toggle in store
     const isVisible = this.store.get('showExecutionsOnChart') !== false;
     if (!isVisible) {
-      this.svgEl.innerHTML = '';
       this.markersEl.innerHTML = '';
+      this.groupsMap.clear();
       this.hideTooltip();
       return;
     }
 
     const paperAccount = this.store.paperAccount;
     if (!paperAccount) {
-      this.svgEl.innerHTML = '';
       this.markersEl.innerHTML = '';
+      this.groupsMap.clear();
       return;
     }
 
     const currentSymbol = this.store.get('currentSymbol');
-    const closedTrades = paperAccount.tradeHistory.filter(t => t.symbol === currentSymbol);
-    const openPositions = paperAccount.positions.filter(p => p.symbol === currentSymbol);
+    const executions = [];
 
-    if (closedTrades.length === 0 && openPositions.length === 0) {
-      this.svgEl.innerHTML = '';
+    // 1. Open active positions
+    if (Array.isArray(paperAccount.positions)) {
+      for (const pos of paperAccount.positions) {
+        if (pos.symbol !== currentSymbol) continue;
+        const entries = this.getTradeEntries(pos);
+        for (const entry of entries) {
+          if (!entry.time || entry.price === undefined) continue;
+          executions.push({
+            id: entry.id || `pos_${pos.id}_${entry.index || 1}`,
+            tradeId: pos.id,
+            side: entry.side || pos.side,
+            time: entry.time,
+            price: entry.price,
+            lots: entry.lots || pos.lots || 1,
+            qty: entry.qty || pos.qty || 1,
+            isExit: false,
+            isOpenPos: true
+          });
+        }
+      }
+    }
+
+    // 2. Closed trades (Entries and Exits)
+    if (Array.isArray(paperAccount.tradeHistory)) {
+      for (const tr of paperAccount.tradeHistory) {
+        if (tr.symbol !== currentSymbol) continue;
+        const entries = this.getTradeEntries(tr);
+        for (const entry of entries) {
+          if (!entry.time || entry.price === undefined) continue;
+          executions.push({
+            id: entry.id || `trade_${tr.id}_${entry.index || 1}`,
+            tradeId: tr.id,
+            side: entry.side || tr.side,
+            time: entry.time,
+            price: entry.price,
+            lots: entry.lots || tr.lots || 1,
+            qty: entry.qty || tr.qty || 1,
+            isExit: false,
+            isOpenPos: false
+          });
+        }
+
+        // Exit execution (closing Long is SELL, closing Short is BUY)
+        if (tr.closeTime && tr.exitPrice !== undefined) {
+          const exitSide = (tr.side === 'BUY') ? 'SELL' : 'BUY';
+          executions.push({
+            id: `exit_${tr.id}`,
+            tradeId: tr.id,
+            side: exitSide,
+            time: tr.closeTime,
+            price: tr.exitPrice,
+            lots: tr.lots || 1,
+            qty: tr.qty || 1,
+            isExit: true,
+            isOpenPos: false,
+            pnl: tr.pnl,
+            pnlPercent: tr.pnlPercent
+          });
+        }
+      }
+    }
+
+    if (executions.length === 0) {
       this.markersEl.innerHTML = '';
+      this.groupsMap.clear();
       this.hideTooltip();
       return;
     }
 
-    const overlayWidth = this.overlayEl.clientWidth || this.chartContainer.clientWidth || 1000;
-    const overlayHeight = this.overlayEl.clientHeight || this.chartContainer.clientHeight || 600;
+    // Sort executions chronologically
+    executions.sort((a, b) => a.time - b.time);
 
-    const lines = [];
+    // Group executions by barTime and side
+    const groups = new Map();
+    for (const exec of executions) {
+      const candle = this.findCandleForTime(exec.time);
+      const barTime = candle ? candle.time : exec.time;
+      const groupKey = `${barTime}_${exec.side}`;
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          id: groupKey,
+          barTime,
+          candle,
+          side: exec.side,
+          trades: []
+        });
+      }
+      groups.get(groupKey).trades.push(exec);
+    }
+
+    this.groupsMap = groups;
+
+    const overlayWidth = this.overlayEl.clientWidth || this.chartContainer.clientWidth || 1000;
     const markers = [];
 
-    // 1. Render Completed Closed Trades
-    for (const t of closedTrades) {
-      if (!t.closeTime || t.exitPrice === undefined) continue;
+    for (const [groupId, group] of groups.entries()) {
+      let x = this.chart.timeToCoordinate(group.barTime);
+      if (x === null || isNaN(x)) continue;
+      if (x < -40 || x > overlayWidth + 40) continue;
 
-      let xExit = this.chart.timeToCoordinate(t.closeTime);
-      let yExit = this.chart.priceToCoordinate(t.exitPrice);
+      const isBuy = group.side === 'BUY';
+      let y = null;
 
-      if (xExit === null || yExit === null || isNaN(xExit) || isNaN(yExit)) continue;
-
-      const entries = this.getTradeEntries(t);
-      const isProfit = t.pnl >= 0;
-      const strokeClass = isProfit ? 'profit' : 'loss';
-      const strokeColor = isProfit ? '#089981' : '#f23645';
-
-      let hasRenderedAnyEntry = false;
-
-      for (const entry of entries) {
-        if (!entry.time || entry.price === undefined) continue;
-
-        let x1 = this.chart.timeToCoordinate(entry.time);
-        let y1 = this.chart.priceToCoordinate(entry.price);
-
-        if (x1 === null || y1 === null || isNaN(x1) || isNaN(y1)) continue;
-
-        // Skip entry if completely out of visible viewport
-        const minX = Math.min(x1, xExit);
-        const maxX = Math.max(x1, xExit);
-        if (maxX < -50 || minX > overlayWidth + 50) continue;
-
-        hasRenderedAnyEntry = true;
-
-        // Offset slightly if entry and exit are virtually identical coordinates
-        let renderXExit = xExit;
-        let renderYExit = yExit;
-        if (Math.abs(x1 - xExit) < 4 && Math.abs(y1 - yExit) < 4) {
-          renderXExit = x1 + 10;
-          renderYExit = isProfit ? y1 - 8 : y1 + 8;
+      if (isBuy) {
+        // Position below candle low
+        const lowPrice = group.candle ? group.candle.low : Math.min(...group.trades.map(t => t.price));
+        const yLow = this.chart.priceToCoordinate(lowPrice);
+        if (yLow !== null && !isNaN(yLow)) {
+          y = yLow + 16;
         }
-
-        // Connecting Track Line from this specific entry to exit
-        lines.push(`
-          <line x1="${x1}" y1="${y1}" x2="${renderXExit}" y2="${renderYExit}"
-                class="trade-track-line ${strokeClass} ${this.hoveredTradeId === t.id ? 'highlighted' : ''}"
-                stroke="${strokeColor}" stroke-width="1.5" stroke-dasharray="4,4"
-                data-trade-id="${t.id}" data-entry-id="${entry.id}" data-marker-type="line" />
-        `);
-
-        // Entry Marker on the exact price and time of this entry
-        const isLong = entry.side === 'BUY';
-        if (isLong) {
-          markers.push(`
-            <div class="trade-exec-marker entry-buy ${this.hoveredTradeId === t.id ? 'highlighted' : ''}"
-                 data-trade-id="${t.id}" data-entry-id="${entry.id}" data-marker-type="entry"
-                 style="left: ${Math.round(x1)}px; top: ${Math.round(y1)}px;"
-                 title="${entries.length > 1 ? `Вход #${entry.index} (BUY)` : 'Покупка (BUY)'}">
-              <svg width="18" height="20" viewBox="0 0 18 20">
-                <path d="M9 1 L17 11 L11.5 11 L11.5 19 L6.5 19 L6.5 11 L1 11 Z" fill="#089981" stroke="#ffffff" stroke-width="1.2"/>
-              </svg>
-            </div>
-          `);
-        } else {
-          markers.push(`
-            <div class="trade-exec-marker entry-sell ${this.hoveredTradeId === t.id ? 'highlighted' : ''}"
-                 data-trade-id="${t.id}" data-entry-id="${entry.id}" data-marker-type="entry"
-                 style="left: ${Math.round(x1)}px; top: ${Math.round(y1)}px;"
-                 title="${entries.length > 1 ? `Вход #${entry.index} (SELL)` : 'Продажа (SELL)'}">
-              <svg width="18" height="20" viewBox="0 0 18 20">
-                <path d="M9 19 L1 9 L6.5 9 L6.5 1 L11.5 1 L11.5 9 L17 9 Z" fill="#f23645" stroke="#ffffff" stroke-width="1.2"/>
-              </svg>
-            </div>
-          `);
+      } else {
+        // Position above candle high
+        const highPrice = group.candle ? group.candle.high : Math.max(...group.trades.map(t => t.price));
+        const yHigh = this.chart.priceToCoordinate(highPrice);
+        if (yHigh !== null && !isNaN(yHigh)) {
+          y = yHigh - 16;
         }
       }
 
-      // Exit Marker on the exact exit point
-      if (hasRenderedAnyEntry || (xExit >= -50 && xExit <= overlayWidth + 50)) {
-        markers.push(`
-          <div class="trade-exec-marker ${isProfit ? 'exit-profit' : 'exit-loss'} ${this.hoveredTradeId === t.id ? 'highlighted' : ''}"
-               data-trade-id="${t.id}" data-marker-type="exit"
-               style="left: ${Math.round(xExit)}px; top: ${Math.round(yExit)}px;" title="Закрытие сделки">
-            <svg width="16" height="16" viewBox="0 0 16 16">
-              <circle cx="8" cy="8" r="7" fill="${strokeColor}" stroke="#ffffff" stroke-width="1.5"/>
-              <circle cx="8" cy="8" r="2.5" fill="#ffffff"/>
-            </svg>
-          </div>
-        `);
+      if (y === null) {
+        const avgPrice = group.trades.reduce((s, t) => s + t.price, 0) / group.trades.length;
+        const yAvg = this.chart.priceToCoordinate(avgPrice);
+        y = isBuy ? (yAvg + 18) : (yAvg - 18);
       }
+
+      const isHighlighted = this.hoveredGroupId === groupId;
+
+      const arrowSvg = isBuy
+        ? `<svg width="12" height="16" viewBox="0 0 12 16" fill="none">
+             <path d="M6 1 L1.5 6.5 M6 1 L10.5 6.5 M6 1.5 L6 15" stroke="#2962ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+           </svg>`
+        : `<svg width="12" height="16" viewBox="0 0 12 16" fill="none">
+             <path d="M6 15 L1.5 9.5 M6 15 L10.5 9.5 M6 14.5 L6 1" stroke="#f23645" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+           </svg>`;
+
+      markers.push(`
+        <div class="tv-trade-marker ${isBuy ? 'buy' : 'sell'} ${isHighlighted ? 'highlighted' : ''}"
+             data-group-id="${groupId}"
+             data-side="${group.side}"
+             style="left: ${Math.round(x)}px; top: ${Math.round(y)}px;">
+          ${arrowSvg}
+        </div>
+      `);
     }
 
-    // 2. Render Active Open Positions (Entries and lines to current bar)
-    const currentBar = this.store.simulator ? this.store.simulator.getCurrentBar() : null;
-    const curPrice = currentBar ? currentBar.close : (openPositions[0] ? openPositions[0].currentPrice : null);
-    const curX = currentBar ? this.chart.timeToCoordinate(currentBar.time) : null;
-    const curY = curPrice ? this.chart.priceToCoordinate(curPrice) : null;
-
-    for (const p of openPositions) {
-      const entries = this.getTradeEntries(p);
-
-      for (const entry of entries) {
-        if (!entry.time || entry.price === undefined) continue;
-
-        let x1 = this.chart.timeToCoordinate(entry.time);
-        let y1 = this.chart.priceToCoordinate(entry.price);
-
-        if (x1 === null || y1 === null || isNaN(x1) || isNaN(y1)) continue;
-
-        // Individual dashed line from every entry to the current candle
-        if (curX !== null && curY !== null && !isNaN(curX) && !isNaN(curY)) {
-          lines.push(`
-            <line x1="${x1}" y1="${y1}" x2="${curX}" y2="${curY}"
-                  class="trade-track-line active ${this.hoveredTradeId === p.id ? 'highlighted' : ''}"
-                  stroke="#2962ff" stroke-width="1.5" stroke-dasharray="3,3"
-                  data-trade-id="${p.id}" data-entry-id="${entry.id}" data-marker-type="line" />
-          `);
-        }
-
-        // Entry Marker on exact entry price & time
-        const isLong = entry.side === 'BUY';
-        if (isLong) {
-          markers.push(`
-            <div class="trade-exec-marker entry-buy active-pos ${this.hoveredTradeId === p.id ? 'highlighted' : ''}"
-                 data-trade-id="${p.id}" data-entry-id="${entry.id}" data-marker-type="entry"
-                 style="left: ${Math.round(x1)}px; top: ${Math.round(y1)}px;"
-                 title="${entries.length > 1 ? `Вход #${entry.index} (BUY)` : 'Позиция BUY'}">
-              <svg width="18" height="20" viewBox="0 0 18 20">
-                <path d="M9 1 L17 11 L11.5 11 L11.5 19 L6.5 19 L6.5 11 L1 11 Z" fill="#089981" stroke="#ffffff" stroke-width="1.2"/>
-              </svg>
-            </div>
-          `);
-        } else {
-          markers.push(`
-            <div class="trade-exec-marker entry-sell active-pos ${this.hoveredTradeId === p.id ? 'highlighted' : ''}"
-                 data-trade-id="${p.id}" data-entry-id="${entry.id}" data-marker-type="entry"
-                 style="left: ${Math.round(x1)}px; top: ${Math.round(y1)}px;"
-                 title="${entries.length > 1 ? `Вход #${entry.index} (SELL)` : 'Позиция SELL'}">
-              <svg width="18" height="20" viewBox="0 0 18 20">
-                <path d="M9 19 L1 9 L6.5 9 L6.5 1 L11.5 1 L11.5 9 L17 9 Z" fill="#f23645" stroke="#ffffff" stroke-width="1.2"/>
-              </svg>
-            </div>
-          `);
-        }
-      }
-    }
-
-    this.svgEl.innerHTML = lines.join('');
     this.markersEl.innerHTML = markers.join('');
   }
 }
