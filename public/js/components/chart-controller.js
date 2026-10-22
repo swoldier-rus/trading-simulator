@@ -168,6 +168,7 @@ export class ChartControllerComponent {
           const sim = this.store.simulator;
           if (sim) {
             sim.jumpToBar(param.time);
+            this.resetStatePreservingZoom(12);
             eventBus.emit('replay:scrubbed');
           }
           showToast('Точка симуляции выбрана! Запускайте воспроизведение или тестируйте сделки.', 'success');
@@ -266,8 +267,60 @@ export class ChartControllerComponent {
         if (cur) this.syncTradeOverlays(cur.close);
       });
 
+      eventBus.on('chart:reset_state_preserving_zoom', (offset = 12) => {
+        this.resetStatePreservingZoom(offset);
+      });
+
     } catch (err) {
       console.error('Failed to initialize OpenAlgo Charts:', err);
+    }
+  }
+
+  /**
+   * Reset chart vertical price scale state (autoscale on, ratio locks off)
+   * while strictly preserving current horizontal zoom (barSpacing) and
+   * aligning the selected candle with a standard TradingView right-edge offset.
+   */
+  resetStatePreservingZoom(rightOffset = 12) {
+    if (!this.chart) return;
+    const ts = this.chart._timeScale || (typeof this.chart.timeScale === 'function' ? this.chart.timeScale() : this.chart.timeScale);
+    const preservedSpacing = ts ? ts.barSpacing : null;
+
+    // 1. Reset vertical price scales to AutoScale and clear manual stretch/ratio locks
+    if (Array.isArray(this.chart._panes)) {
+      for (const pane of this.chart._panes) {
+        if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
+        const scales = typeof pane.scales === 'function' ? pane.scales() : [];
+        for (const scale of scales) {
+          if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
+        }
+      }
+    }
+    if (typeof this.chart.setAutoScale === 'function') {
+      this.chart.setAutoScale(true);
+    }
+
+    // 2. Position selected candle at right with TradingView offset, preserving horizontal zoom
+    if (ts) {
+      if (typeof ts.setRightOffset === 'function') {
+        ts.setRightOffset(rightOffset);
+      }
+      if (preservedSpacing && typeof ts.setBarSpacing === 'function') {
+        ts.setBarSpacing(preservedSpacing);
+      }
+    }
+
+    // 3. Invalidate and repaint canvas
+    if (typeof this.chart.invalidate === 'function') {
+      this.chart.invalidate(e => e.invalidateGlobal(3));
+    }
+
+    // 4. Synchronize trade markers and lines overlays
+    if (this.store.tradeExecutionsOverlay) {
+      this.store.tradeExecutionsOverlay.render();
+    }
+    if (this.store.tradeLinesOverlay) {
+      this.store.tradeLinesOverlay.scheduleRender();
     }
   }
 

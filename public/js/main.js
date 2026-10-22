@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const chartStyleModal = new ChartStyleModalComponent(store);
 
   store.chartController = chartController;
+  store.replayBar = replayBar;
   store.tradeLinesOverlay = tradeLinesOverlay;
   store.tradeExecutionsOverlay = tradeExecutionsOverlay;
   store.quickTradeWidget = quickTradeWidget;

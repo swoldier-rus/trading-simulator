@@ -360,6 +360,7 @@ export class ReplayBarComponent {
       if (!earliestSec) {
         simulator.jumpToFirstBar(25);
         if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+        eventBus.emit('chart:reset_state_preserving_zoom', 12);
         eventBus.emit('replay:scrubbed');
         showToast('Симуляция начата с первой доступной свечи', 'success');
         return;
@@ -378,7 +379,7 @@ export class ReplayBarComponent {
         simulator.jumpToFirstBar(initialPreRoll);
         if (mainSeries) {
           mainSeries.setData(simulator.getVisibleCandles());
-          if (chart) chart.fitContent();
+          eventBus.emit('chart:reset_state_preserving_zoom', 12);
         }
         eventBus.emit('replay:scrubbed');
         const startBar = simulator.getCurrentBar();
@@ -433,7 +434,7 @@ export class ReplayBarComponent {
         simulator.jumpToBar(snappedRandomSec);
         if (mainSeries) {
           mainSeries.setData(simulator.getVisibleCandles());
-          if (chart) chart.fitContent();
+          eventBus.emit('chart:reset_state_preserving_zoom', 12);
         }
         eventBus.emit('replay:scrubbed');
         const cur = simulator.getCurrentBar();
@@ -476,7 +477,7 @@ export class ReplayBarComponent {
       const res = simulator.jumpToBar(targetSec);
       if (res) {
         if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
-        if (chart) chart.fitContent();
+        eventBus.emit('chart:reset_state_preserving_zoom', 12);
         eventBus.emit('replay:scrubbed');
         showToast(`Перешли к дате: ${formatTimestamp(targetSec)}`, 'success');
         return;
@@ -504,7 +505,7 @@ export class ReplayBarComponent {
         simulator.jumpToBar(targetSec);
         if (mainSeries) {
           mainSeries.setData(simulator.getVisibleCandles());
-          if (chart) chart.fitContent();
+          eventBus.emit('chart:reset_state_preserving_zoom', 12);
         }
         eventBus.emit('replay:scrubbed');
         showToast(`История загружена! Перешли к дате: ${formatTimestamp(targetSec)}`, 'success');
