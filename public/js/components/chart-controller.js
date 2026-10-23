@@ -4,6 +4,11 @@ import { API } from '../api.js';
 import { marketDataService } from '../services/market-data.service.js';
 import { showToast, formatTimestamp } from '../core/utils.js';
 
+export const DEFAULT_VOLUME_COLORS = {
+  upColor: 'rgba(8, 153, 129, 0.45)',
+  downColor: 'rgba(242, 54, 69, 0.45)'
+};
+
 export class ChartControllerComponent {
   constructor(store) {
     this.store = store;
@@ -476,9 +481,89 @@ export class ChartControllerComponent {
     this.applyVolumeScaleMargins();
   }
 
+  getVolumeColors() {
+    try {
+      const raw = localStorage.getItem('trading_simulator_volume_colors');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            upColor: parsed.upColor || DEFAULT_VOLUME_COLORS.upColor,
+            downColor: parsed.downColor || DEFAULT_VOLUME_COLORS.downColor
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[ChartController] Failed to parse volume colors:', e);
+    }
+    return { ...DEFAULT_VOLUME_COLORS };
+  }
+
+  saveVolumeColors(colors) {
+    if (!colors || typeof colors !== 'object') return;
+    const finalColors = {
+      upColor: colors.upColor || DEFAULT_VOLUME_COLORS.upColor,
+      downColor: colors.downColor || DEFAULT_VOLUME_COLORS.downColor
+    };
+    try {
+      localStorage.setItem('trading_simulator_volume_colors', JSON.stringify(finalColors));
+    } catch (e) {
+      console.warn('[ChartController] Failed to save volume colors:', e);
+    }
+    this.applyVolumeColors(finalColors, false);
+  }
+
+  applyVolumeColors(colors, persist = false) {
+    if (!colors) return;
+    const finalColors = {
+      upColor: colors.upColor || DEFAULT_VOLUME_COLORS.upColor,
+      downColor: colors.downColor || DEFAULT_VOLUME_COLORS.downColor
+    };
+
+    if (persist) {
+      this.saveVolumeColors(finalColors);
+    }
+
+    // 1. Update indicator descriptor defaults
+    if (window.OpenAlgoCharts && typeof window.OpenAlgoCharts.registeredIndicators === 'function') {
+      try {
+        const registered = window.OpenAlgoCharts.registeredIndicators();
+        const volDesc = registered.find(i => i.id === 'volume');
+        if (volDesc && Array.isArray(volDesc.inputs)) {
+          const upInp = volDesc.inputs.find(i => i.key === 'upColor');
+          if (upInp) upInp.default = finalColors.upColor;
+          const downInp = volDesc.inputs.find(i => i.key === 'downColor');
+          if (downInp) downInp.default = finalColors.downColor;
+        }
+      } catch (err) {
+        console.warn('[ChartController] Failed to update descriptor colors:', err);
+      }
+    }
+
+    // 2. Apply to currently active indicator on chart
+    const ind = this.getOnChartVolumeIndicator();
+    if (ind) {
+      try {
+        const curSettings = typeof ind.settings === 'function' ? ind.settings() : {};
+        if (typeof ind.setSettings === 'function') {
+          ind.setSettings({
+            ...curSettings,
+            upColor: finalColors.upColor,
+            downColor: finalColors.downColor
+          });
+        }
+      } catch (err) {
+        console.warn('[ChartController] Failed to apply colors to active volume indicator:', err);
+      }
+    }
+
+    eventBus.emit('volume:colorsChanged', finalColors);
+  }
+
   configureVolumeIndicatorDescriptor() {
     if (!window.OpenAlgoCharts || typeof window.OpenAlgoCharts.registeredIndicators !== 'function') return;
     try {
+      const volColors = this.getVolumeColors();
       const registered = window.OpenAlgoCharts.registeredIndicators();
       const volDesc = registered.find(i => i.id === 'volume');
       if (volDesc) {
@@ -492,9 +577,9 @@ export class ChartControllerComponent {
         const showMA = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'showMA') : null;
         if (showMA) showMA.default = false;
         const upColor = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'upColor') : null;
-        if (upColor) upColor.default = 'rgba(8, 153, 129, 0.45)';
+        if (upColor) upColor.default = volColors.upColor;
         const downColor = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'downColor') : null;
-        if (downColor) downColor.default = 'rgba(242, 54, 69, 0.45)';
+        if (downColor) downColor.default = volColors.downColor;
       }
     } catch (e) {
       console.warn('[ChartController] Failed to configure volume descriptor:', e);
@@ -540,6 +625,7 @@ export class ChartControllerComponent {
       const ind = this.chart.addIndicator('volume');
       setTimeout(() => {
         this.applyVolumeScaleMargins(ind);
+        this.applyVolumeColors(this.getVolumeColors(), false);
         if (typeof this.chart.invalidate === 'function') {
           this.chart.invalidate(e => e.invalidateGlobal(3));
         }

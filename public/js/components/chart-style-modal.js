@@ -145,6 +145,12 @@ export class ChartStyleModalComponent {
     this.currentWorkingShowVolume = false;
     this.backupShowVolume = false;
 
+    this.currentWorkingVolumeColors = {
+      upColor: 'rgba(8, 153, 129, 0.45)',
+      downColor: 'rgba(242, 54, 69, 0.45)'
+    };
+    this.backupVolumeColors = { ...this.currentWorkingVolumeColors };
+
     this.currentWorkingSessionBreaks = {
       enabled: true,
       color: 'rgba(255, 255, 255, 0.2)',
@@ -269,6 +275,13 @@ export class ChartStyleModalComponent {
     this.backupShowVolume = showVol;
     this.currentWorkingShowVolume = showVol;
 
+    const volColors = this.store.chartController ? this.store.chartController.getVolumeColors() : {
+      upColor: 'rgba(8, 153, 129, 0.45)',
+      downColor: 'rgba(242, 54, 69, 0.45)'
+    };
+    this.backupVolumeColors = { ...volColors };
+    this.currentWorkingVolumeColors = { ...volColors };
+
     const sessionBreaksConfig = this.store.get('sessionBreaksConfig') || {
       enabled: this.store.get('showSessionBreaks') !== false,
       color: 'rgba(255, 255, 255, 0.2)',
@@ -313,6 +326,12 @@ export class ChartStyleModalComponent {
       this.store.chartController.toggleOnChartVolume(this.backupShowVolume);
     }
 
+    // Revert volume colors
+    if (this.backupVolumeColors && this.store.chartController) {
+      this.currentWorkingVolumeColors = { ...this.backupVolumeColors };
+      this.store.chartController.applyVolumeColors(this.backupVolumeColors, true);
+    }
+
     // Revert session breaks
     if (this.backupSessionBreaks) {
       this.store.set('sessionBreaksConfig', { ...this.backupSessionBreaks });
@@ -337,6 +356,10 @@ export class ChartStyleModalComponent {
 
     if (this.currentWorkingShowVolume !== undefined && this.store.chartController) {
       this.store.chartController.toggleOnChartVolume(this.currentWorkingShowVolume);
+    }
+
+    if (this.currentWorkingVolumeColors && this.store.chartController) {
+      this.store.chartController.saveVolumeColors(this.currentWorkingVolumeColors);
     }
 
     if (this.currentWorkingSessionBreaks) {
@@ -366,6 +389,11 @@ export class ChartStyleModalComponent {
       this.applyExecutionsLivePreview();
       this.currentWorkingShowVolume = false;
       this.applyVolumeLivePreview();
+      this.currentWorkingVolumeColors = {
+        upColor: 'rgba(8, 153, 129, 0.45)',
+        downColor: 'rgba(242, 54, 69, 0.45)'
+      };
+      this.applyVolumeColorsLivePreview();
       this.renderChartForm();
       showToast('Настройки графика сброшены по умолчанию', 'info');
     } else if (this.activeTab === 'appearance') {
@@ -393,6 +421,12 @@ export class ChartStyleModalComponent {
       } else {
         this.store.chartController.disableOnChartVolume();
       }
+    }
+  }
+
+  applyVolumeColorsLivePreview() {
+    if (this.store.chartController && this.currentWorkingVolumeColors) {
+      this.store.chartController.applyVolumeColors(this.currentWorkingVolumeColors, false);
     }
   }
 
@@ -434,6 +468,27 @@ export class ChartStyleModalComponent {
     });
 
     this.chartModalBody.appendChild(rowVol);
+
+    const volColors = this.currentWorkingVolumeColors || {
+      upColor: 'rgba(8, 153, 129, 0.45)',
+      downColor: 'rgba(242, 54, 69, 0.45)'
+    };
+
+    const rowVolColors = this.createSettingRow({
+      label: 'Цвета объема (рост / падение)',
+      controls: [
+        this.createColorButton(volColors.upColor || 'rgba(8, 153, 129, 0.45)', (newColor) => {
+          this.currentWorkingVolumeColors.upColor = newColor;
+          this.applyVolumeColorsLivePreview();
+        }, 'Цвет объема при росте', { showOpacity: true }),
+        this.createColorButton(volColors.downColor || 'rgba(242, 54, 69, 0.45)', (newColor) => {
+          this.currentWorkingVolumeColors.downColor = newColor;
+          this.applyVolumeColorsLivePreview();
+        }, 'Цвет объема при падении', { showOpacity: true })
+      ]
+    });
+
+    this.chartModalBody.appendChild(rowVolColors);
   }
 
   applyLivePreview() {
