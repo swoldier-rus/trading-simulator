@@ -101,6 +101,11 @@ export class QuickTradeWidgetComponent {
   }
 
   executeQuickOrder(side) {
+    if (this.store.get('isSymbolLoading')) {
+      showToast('Котировки инструмента загружаются, пожалуйста подождите...', 'warning');
+      return;
+    }
+
     const simulator = this.store.simulator;
     const paperAccount = this.store.paperAccount;
     if (!simulator || !paperAccount) return;
@@ -139,14 +144,32 @@ export class QuickTradeWidgetComponent {
     }
   }
 
+  setLoading(isLoading) {
+    if (this.btnQuickSell) {
+      this.btnQuickSell.disabled = !!isLoading;
+      this.btnQuickSell.classList.toggle('loading', !!isLoading);
+    }
+    if (this.btnQuickBuy) {
+      this.btnQuickBuy.disabled = !!isLoading;
+      this.btnQuickBuy.classList.toggle('loading', !!isLoading);
+    }
+    if (isLoading) {
+      if (this.quickSellPrice) this.quickSellPrice.textContent = '—';
+      if (this.quickBuyPrice) this.quickBuyPrice.textContent = '—';
+    } else {
+      this.refreshToCurrentBar();
+    }
+  }
+
   updatePrice(bar) {
-    if (!bar) return;
+    if (!bar || this.store.get('isSymbolLoading')) return;
     const formatted = bar.close.toFixed(2).replace('.', ',');
     if (this.quickSellPrice) this.quickSellPrice.textContent = formatted;
     if (this.quickBuyPrice) this.quickBuyPrice.textContent = formatted;
   }
 
   refreshToCurrentBar() {
+    if (this.store.get('isSymbolLoading')) return;
     const sim = this.store.simulator;
     const current = sim ? sim.getCurrentBar() : null;
     if (current) {

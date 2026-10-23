@@ -321,3 +321,46 @@ body.resizing-dock * {
   opacity: 0.85;
   text-decoration: underline;
 }
+
+/* Clickable Ticker Symbol Link in Tables */
+.table-symbol-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tv-text, #d1d4dc);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  user-select: none;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.table-symbol-link:hover {
+  color: #fff;
+  background: rgba(41, 98, 255, 0.2);
+  border-color: var(--tv-accent, #2962ff);
+  box-shadow: 0 0 8px rgba(41, 98, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.table-symbol-link.active {
+  color: #fff;
+  background: rgba(41, 98, 255, 0.25);
+  border-color: var(--tv-accent, #2962ff);
+  box-shadow: 0 0 6px rgba(41, 98, 255, 0.3);
+}
+
+.table-symbol-link.active::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--tv-accent, #2962ff);
+  box-shadow: 0 0 6px var(--tv-accent, #2962ff);
+}

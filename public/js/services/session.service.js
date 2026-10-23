@@ -1,0 +1,347 @@
+// services/session.service.js - Unified Simulation & Trading Session Persistence Service
+import { eventBus } from '../core/event-bus.js';
+
+const STORAGE_KEY = 'trading_simulator_session_v1';
+
+class SessionPersistenceService {
+  constructor(store) {
+    this.store = store;
+    this.saveTimeout = null;
+    this.isRestoring = false;
+    this._initialized = false;
+    this.drawingsBySymbol = {};
+  }
+
+  init() {
+    if (this._initialized) return;
+    this._initialized = true;
+
+    // Listen to all reactive state updates
+    eventBus.on('account:update', () => this.scheduleSave());
+    eventBus.on('bar:tick', () => this.scheduleSave());
+    eventBus.on('drawings:change', () => this.scheduleSave());
+    eventBus.on('indicators:change', () => this.scheduleSave());
+    eventBus.on('chart:zoom', () => this.scheduleSave());
+    eventBus.on('state:showExecutionsOnChart', () => this.scheduleSave());
+    eventBus.on('state:showSessionBreaks', () => this.scheduleSave());
+    eventBus.on('state:sessionBreaksConfig', () => this.scheduleSave());
+    eventBus.on('state:currentTimeframe', () => this.scheduleSave());
+    eventBus.on('state:currentSymbol', () => this.scheduleSave());
+    eventBus.on('state:currentChartType', () => this.scheduleSave());
+
+    // Switch per-ticker drawings when instrument changes
+    eventBus.on('symbol:change', ({ prevSymbol, ticker } = {}) => {
+      if (prevSymbol && ticker && prevSymbol !== ticker) {
+        this.switchSymbolDrawings(prevSymbol, ticker);
+      }
+    });
+
+    // Flush immediately before window closes or refreshes
+    window.addEventListener('beforeunload', () => {
+      this.saveImmediate();
+    });
+  }
+
+  scheduleSave(delay = 300) {
+    if (this.isRestoring) return;
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => {
+      this.saveTimeout = null;
+      this.saveImmediate();
+    }, delay);
+  }
+
+  buildSnapshot() {
+    const symbol = this.store.get('currentSymbol') || 'SBER';
+    const timeframe = this.store.get('currentTimeframe') || '1h';
+    const chartType = this.store.get('currentChartType') || 'candlestick';
+    const sim = this.store.simulator;
+    const paper = this.store.paperAccount;
+    const chart = this.store.chart;
+    const dc = this.store.drawingController;
+
+    const currentBar = sim ? sim.getCurrentBar() : null;
+    const currentBarTime = currentBar ? currentBar.time : null;
+
+    // Viewport zoom & offset
+    let barSpacing = null;
+    let rightOffset = null;
+    if (chart) {
+      const ts = chart._timeScale || (typeof chart.timeScale === 'function' ? chart.timeScale() : chart.timeScale);
+      if (ts) {
+        barSpacing = ts.barSpacing || null;
+        rightOffset = ts.rightOffset !== undefined ? ts.rightOffset : null;
+      }
+    }
+
+    // Active indicators (deduplicated)
+    const indicators = (chart && Array.isArray(chart._indicators))
+      ? Array.from(new Set(chart._indicators.map(ind => ind.indicatorId).filter(Boolean)))
+      : [];
+
+    // Drawings from DrawingController (per-symbol and active)
+    let drawings = null;
+    const drawingsBySymbol = { ...(this.drawingsBySymbol || {}) };
+    if (dc && typeof dc.toJSON === 'function') {
+      try {
+        drawings = dc.toJSON();
+        if (symbol) {
+          drawingsBySymbol[symbol] = drawings;
+        }
+      } catch (e) {
+        console.warn('[SessionService] Failed to serialize drawings:', e);
+      }
+    }
+
+    // Paper trading state
+    const accountState = paper && typeof paper.exportState === 'function'
+      ? paper.exportState()
+      : null;
+
+    // Replay state
+    const replayState = {
+      isActive: sim ? !!sim.isReplayActive : false,
+      currentBarTime: currentBarTime,
+      speedMs: sim ? sim.speedMs : 1000
+    };
+
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      symbol,
+      timeframe,
+      chartType,
+      replay: replayState,
+      account: accountState,
+      indicators,
+      chart: {
+        barSpacing,
+        rightOffset,
+        drawings,
+        drawingsBySymbol
+      },
+      ui: {
+        showExecutionsOnChart: this.store.get('showExecutionsOnChart') !== false,
+        showSessionBreaks: this.store.get('showSessionBreaks') !== false,
+        sessionBreaksConfig: this.store.get('sessionBreaksConfig') || null
+      }
+    };
+  }
+
+  saveImmediate() {
+    if (this.isRestoring) return;
+    try {
+      const snapshot = this.buildSnapshot();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      console.warn('[SessionService] Failed to save session:', e);
+    }
+  }
+
+  getSavedSession() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.version === 1) {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('[SessionService] Failed to load session:', e);
+    }
+    return null;
+  }
+
+  async restoreSession(saved) {
+    if (!saved) return false;
+    this.isRestoring = true;
+
+    try {
+      // 1. Symbol & Timeframe & Chart Type
+      if (saved.symbol && saved.symbol !== this.store.get('currentSymbol')) {
+        this.store.set('currentSymbol', saved.symbol);
+      }
+      if (saved.timeframe && saved.timeframe !== this.store.get('currentTimeframe')) {
+        this.store.set('currentTimeframe', saved.timeframe);
+      }
+      if (saved.chartType && saved.chartType !== this.store.get('currentChartType')) {
+        this.store.set('currentChartType', saved.chartType);
+      }
+      if (saved.ui && saved.ui.showExecutionsOnChart !== undefined) {
+        this.store.set('showExecutionsOnChart', saved.ui.showExecutionsOnChart);
+      }
+      if (saved.ui && saved.ui.showSessionBreaks !== undefined) {
+        this.store.set('showSessionBreaks', saved.ui.showSessionBreaks);
+      }
+      if (saved.ui && saved.ui.sessionBreaksConfig) {
+        this.store.set('sessionBreaksConfig', saved.ui.sessionBreaksConfig);
+      }
+
+      // 2. Paper trading account
+      if (saved.account && this.store.paperAccount) {
+        this.store.paperAccount.importState(saved.account);
+      }
+
+      // 3. Replay speed
+      if (saved.replay && saved.replay.speedMs && this.store.simulator) {
+        this.store.simulator.speedMs = saved.replay.speedMs;
+        const speedSelect = document.getElementById('replaySpeedSelect');
+        if (speedSelect) speedSelect.value = String(saved.replay.speedMs);
+      }
+
+      // 4. Indicators restoration
+      if (Array.isArray(saved.indicators) && this.store.chart && typeof this.store.chart.addIndicator === 'function') {
+        const existingInds = new Set((this.store.chart._indicators || []).map(i => i.indicatorId));
+        for (const indId of saved.indicators) {
+          if (!existingInds.has(indId)) {
+            try {
+              this.store.chart.addIndicator(indId);
+            } catch (err) {
+              console.warn('[SessionService] Could not restore indicator:', indId, err);
+            }
+          }
+        }
+        if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
+          this.store.chartController.syncIndicatorLegendOffset();
+        }
+        if (this.store.components?.modals && typeof this.store.components.modals.populateIndicatorsList === 'function') {
+          this.store.components.modals.populateIndicatorsList();
+        }
+      }
+
+      // 5. Drawings restoration (per-symbol and backward compatible)
+      this.drawingsBySymbol = saved.chart?.drawingsBySymbol || {};
+      const activeDrawings = this.drawingsBySymbol[symbol] || saved.chart?.drawings;
+      if (activeDrawings && this.store.drawingController && typeof this.store.drawingController.fromJSON === 'function') {
+        try {
+          this.store.drawingController.fromJSON(activeDrawings);
+        } catch (err) {
+          console.warn('[SessionService] Failed to restore drawings:', err);
+        }
+      }
+
+      // 6. Viewport zoom & right offset
+      if (saved.chart && this.store.chart) {
+        const ts = this.store.chart._timeScale || (typeof this.store.chart.timeScale === 'function' ? this.store.chart.timeScale() : this.store.chart.timeScale);
+        if (ts) {
+          if (saved.chart.barSpacing && typeof ts.setBarSpacing === 'function') {
+            ts.setBarSpacing(saved.chart.barSpacing);
+          }
+          if (saved.chart.rightOffset !== undefined && typeof ts.setRightOffset === 'function') {
+            ts.setRightOffset(saved.chart.rightOffset);
+          }
+        }
+      }
+
+      // 7. Update UI components
+      if (this.store.components?.bottomDock && this.store.paperAccount) {
+        this.store.components.bottomDock.flushUpdate(this.store.paperAccount.getPerformanceMetrics());
+      }
+      if (this.store.tradeExecutionsOverlay) {
+        this.store.tradeExecutionsOverlay.scheduleRender();
+      }
+      if (this.store.tradeLinesOverlay) {
+        this.store.tradeLinesOverlay.scheduleRender();
+      }
+
+      return true;
+    } catch (err) {
+      console.error('[SessionService] Error restoring session:', err);
+      return false;
+    } finally {
+      this.isRestoring = false;
+    }
+  }
+
+  // Reset session: triggers ONLY on clicking Reset button or selecting a new start point
+  resetSession({ newTime = null } = {}) {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
+    // 1. Reset paper trading account
+    if (this.store.paperAccount) {
+      this.store.paperAccount.reset();
+    }
+
+    // 2. Clear bottom dock trades and update metrics
+    if (this.store.components?.bottomDock) {
+      const dock = this.store.components.bottomDock;
+      if (dock.renderedTradesSet) {
+        dock.renderedTradesSet.clear();
+      }
+      if (dock.tradesTableBody) {
+        dock.tradesTableBody.innerHTML = '<tr class="empty-row"><td colspan="11" class="text-center">Нет совершенных сделок</td></tr>';
+      }
+      if (this.store.paperAccount) {
+        dock.flushUpdate(this.store.paperAccount.getPerformanceMetrics());
+      }
+    }
+
+    // 3. Re-render chart overlays
+    if (this.store.tradeExecutionsOverlay) {
+      this.store.tradeExecutionsOverlay.scheduleRender();
+    }
+    if (this.store.tradeLinesOverlay) {
+      this.store.tradeLinesOverlay.scheduleRender();
+    }
+
+    // 4. Save clean snapshot with the updated point immediately
+    this.saveImmediate();
+  }
+
+  switchSymbolDrawings(prevSymbol, newSymbol) {
+    const dc = this.store.drawingController;
+    if (!dc) return;
+
+    this.drawingsBySymbol = this.drawingsBySymbol || {};
+
+    // 1. Serialize and save drawings for previous ticker
+    if (prevSymbol && typeof dc.toJSON === 'function') {
+      try {
+        this.drawingsBySymbol[prevSymbol] = dc.toJSON();
+      } catch (e) {
+        console.warn('[SessionService] Failed to serialize drawings for prevSymbol:', e);
+      }
+    }
+
+    // 2. Clear current drawings from canvas
+    if (typeof dc.drawings === 'function' && typeof dc.removeMany === 'function') {
+      try {
+        const all = dc.drawings();
+        if (all && all.length > 0) {
+          dc.removeMany(all.map(d => d.id));
+        }
+      } catch (e) {
+        console.warn('[SessionService] Failed to clear canvas drawings:', e);
+      }
+    }
+
+    // 3. Load drawings for new ticker if they were saved previously
+    if (newSymbol && this.drawingsBySymbol[newSymbol] && typeof dc.fromJSON === 'function') {
+      try {
+        dc.fromJSON(this.drawingsBySymbol[newSymbol]);
+      } catch (e) {
+        console.warn('[SessionService] Failed to restore drawings for newSymbol:', e);
+      }
+    }
+
+    // 4. Trigger reactive save and event
+    eventBus.emit('drawings:change');
+    this.scheduleSave();
+  }
+
+  clearSession() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.warn('[SessionService] Failed to clear session:', e);
+    }
+  }
+}
+
+export { SessionPersistenceService };
+export default SessionPersistenceService;

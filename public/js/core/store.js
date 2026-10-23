@@ -8,7 +8,9 @@ const PERSISTED_KEYS = [
   'currentTimeframe',
   'currentChartType',
   'isMagnetActive',
-  'showExecutionsOnChart'
+  'showExecutionsOnChart',
+  'showSessionBreaks',
+  'sessionBreaksConfig'
 ];
 
 const STORAGE_KEY = 'trading_simulator_saved_state';
@@ -23,6 +25,13 @@ class AppStore {
       currentChartType: 'candlestick',
       isMagnetActive: false,
       showExecutionsOnChart: true,
+      showSessionBreaks: true,
+      sessionBreaksConfig: {
+        enabled: true,
+        color: 'rgba(255, 255, 255, 0.2)',
+        width: 1,
+        style: 'dashed'
+      },
       currentPrice: 0,
       currentSelectedSide: 'BUY',
       selectedOrderType: 'MARKET',
@@ -42,6 +51,8 @@ class AppStore {
     this.paperAccount = null;
     this.simulator = null;
     this.indicatorManager = null;
+    this.sessionService = null;
+    this.rightRail = null;
   }
 
   loadPersistedState() {

@@ -28,8 +28,20 @@ export class ChartOrderMenuComponent {
 
     this.btnMenuActionCustom = document.getElementById('btnMenuActionCustom');
     this.btnMenuResetScale = document.getElementById('btnMenuResetScale');
-    this.btnMenuToggleExecutions = document.getElementById('btnMenuToggleExecutions');
-    this.menuExecutionsCheck = document.getElementById('menuExecutionsCheck');
+
+    // Time Scale Context Menu Elements
+    this.timeScaleContextMenu = document.getElementById('timeScaleContextMenu');
+    this.btnTimeScaleReset = document.getElementById('btnTimeScaleReset');
+    this.btnTimeScaleOpenSettings = document.getElementById('btnTimeScaleOpenSettings');
+    this.isTimeScaleMenuOpen = false;
+
+    // Price Scale Context Menu Elements
+    this.priceScaleContextMenu = document.getElementById('priceScaleContextMenu');
+    this.btnPriceScaleReset = document.getElementById('btnPriceScaleReset');
+    this.btnPriceScaleToggleAuto = document.getElementById('btnPriceScaleToggleAuto');
+    this.iconPriceScaleAutoCheck = document.getElementById('iconPriceScaleAutoCheck');
+    this.btnPriceScaleOpenSettings = document.getElementById('btnPriceScaleOpenSettings');
+    this.isPriceScaleMenuOpen = false;
 
     // State
     this.menuTargetPrice = null;
@@ -42,6 +54,17 @@ export class ChartOrderMenuComponent {
   }
 
   init() {
+    // Relocate menus to document.body so they render above all app panels and cannot be clipped by container overflow
+    if (this.chartOrderMenu && this.chartOrderMenu.parentElement !== document.body) {
+      document.body.appendChild(this.chartOrderMenu);
+    }
+    if (this.timeScaleContextMenu && this.timeScaleContextMenu.parentElement !== document.body) {
+      document.body.appendChild(this.timeScaleContextMenu);
+    }
+    if (this.priceScaleContextMenu && this.priceScaleContextMenu.parentElement !== document.body) {
+      document.body.appendChild(this.priceScaleContextMenu);
+    }
+
     this.initMouseTracking();
     this.initMenuControls();
 
@@ -50,29 +73,66 @@ export class ChartOrderMenuComponent {
       if (this.isMenuOpen && this.chartOrderMenu && !this.chartOrderMenu.contains(e.target) && e.target !== this.priceAxisPlusBtn) {
         this.close();
       }
+      if (this.isTimeScaleMenuOpen && this.timeScaleContextMenu && !this.timeScaleContextMenu.contains(e.target)) {
+        this.closeTimeScaleContextMenu();
+      }
+      if (this.isPriceScaleMenuOpen && this.priceScaleContextMenu && !this.priceScaleContextMenu.contains(e.target)) {
+        this.closePriceScaleContextMenu();
+      }
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.isMenuOpen) {
-        this.close();
+      if (e.key === 'Escape') {
+        if (this.isMenuOpen) this.close();
+        if (this.isTimeScaleMenuOpen) this.closeTimeScaleContextMenu();
+        if (this.isPriceScaleMenuOpen) this.closePriceScaleContextMenu();
       }
+    });
+
+    // Close immediately when symbol changes or loading begins
+    eventBus.on('symbol:change', () => {
+      this.close();
+      this.closeTimeScaleContextMenu();
+      this.closePriceScaleContextMenu();
     });
   }
 
   initMouseTracking() {
     if (!this.chartContainer) return;
 
-    // Right-click on chart -> open chart order menu at cursor price
-    this.chartEl.addEventListener('contextmenu', (e) => {
+    // Right-click on chart -> open chart order menu, time scale menu, or price scale menu
+    this.chartContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const chart = this.store.chart;
       if (this.chartContainer && chart) {
         const containerRect = this.chartContainer.getBoundingClientRect();
         const localX = e.clientX - containerRect.left;
         const localY = e.clientY - containerRect.top;
+
+        // 1. Check if right-click was on right price scale (rightmost ~65px)
+        const priceScaleWidth = 65;
+        if (localX >= containerRect.width - priceScaleWidth) {
+          this.close();
+          this.closeTimeScaleContextMenu();
+          this.openPriceScaleContextMenu(e.clientX, e.clientY);
+          return;
+        }
+
+        // 2. Check if right-click was on bottom time scale (bottom 28px of chart container)
+        const timeScaleHeight = 28;
+        if (localY >= containerRect.height - timeScaleHeight) {
+          this.close();
+          this.closePriceScaleContextMenu();
+          this.openTimeScaleContextMenu(e.clientX, e.clientY);
+          return;
+        }
+
+        // 3. Regular chart canvas area
+        this.closeTimeScaleContextMenu();
+        this.closePriceScaleContextMenu();
         const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
         if (price && price > 0) {
-          this.open(price, localX, localY);
+          this.open(price, e.clientX, e.clientY);
         }
       }
     });
@@ -106,9 +166,9 @@ export class ChartOrderMenuComponent {
     if (this.priceAxisPlusBtn) {
       this.priceAxisPlusBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (this.hoveredPrice && this.chartContainer) {
-          const containerRect = this.chartContainer.getBoundingClientRect();
-          this.open(this.hoveredPrice, containerRect.width - 340, this.hoveredY - 30);
+        if (this.hoveredPrice && this.priceAxisPlusBtn) {
+          const btnRect = this.priceAxisPlusBtn.getBoundingClientRect();
+          this.open(this.hoveredPrice, btnRect.left, btnRect.top);
         }
       });
     }
@@ -192,23 +252,66 @@ export class ChartOrderMenuComponent {
     if (this.btnMenuResetScale) {
       this.btnMenuResetScale.addEventListener('click', () => {
         this.close();
-        const chart = this.store.chart;
-        if (chart && typeof chart.resetScale === 'function') {
-          chart.resetScale();
-          showToast('Состояние графика сброшено', 'info');
+        if (this.store.chartController) {
+          this.store.chartController.resetFullChartScale();
         }
       });
     }
 
-    if (this.btnMenuToggleExecutions) {
-      this.btnMenuToggleExecutions.addEventListener('click', () => {
-        const current = this.store.get('showExecutionsOnChart') !== false;
-        const next = !current;
-        this.store.set('showExecutionsOnChart', next);
-        eventBus.emit('executions:toggle', next);
-        showToast(next ? 'Отображение сделок на графике включено' : 'Отображение сделок на графике скрыто', 'info');
-        this.close();
+    if (this.btnTimeScaleReset) {
+      this.btnTimeScaleReset.addEventListener('click', () => {
+        this.closeTimeScaleContextMenu();
+        if (this.store.chartController) {
+          this.store.chartController.resetTimeScale();
+        }
       });
+    }
+
+    if (this.btnTimeScaleOpenSettings) {
+      this.btnTimeScaleOpenSettings.addEventListener('click', () => {
+        this.closeTimeScaleContextMenu();
+        if (this.store.chartStyleModal) {
+          this.store.chartStyleModal.open('chart');
+        }
+      });
+    }
+
+    if (this.btnPriceScaleReset) {
+      this.btnPriceScaleReset.addEventListener('click', () => {
+        this.closePriceScaleContextMenu();
+        if (this.store.chartController) {
+          this.store.chartController.resetPriceScale();
+        }
+      });
+    }
+
+    if (this.btnPriceScaleToggleAuto) {
+      this.btnPriceScaleToggleAuto.addEventListener('click', () => {
+        if (this.store.chartController) {
+          const next = this.store.chartController.togglePriceAutoScale();
+          this.updatePriceScaleAutoCheck(next);
+        }
+        this.closePriceScaleContextMenu();
+      });
+    }
+
+    if (this.btnPriceScaleOpenSettings) {
+      this.btnPriceScaleOpenSettings.addEventListener('click', () => {
+        this.closePriceScaleContextMenu();
+        if (this.store.chartStyleModal) {
+          this.store.chartStyleModal.open('chart');
+        }
+      });
+    }
+
+    if (this.timeScaleContextMenu) {
+      this.timeScaleContextMenu.addEventListener('pointerdown', e => e.stopPropagation());
+      this.timeScaleContextMenu.addEventListener('click', e => e.stopPropagation());
+    }
+
+    if (this.priceScaleContextMenu) {
+      this.priceScaleContextMenu.addEventListener('pointerdown', e => e.stopPropagation());
+      this.priceScaleContextMenu.addEventListener('click', e => e.stopPropagation());
     }
 
     if (this.chartOrderMenu) {
@@ -217,7 +320,120 @@ export class ChartOrderMenuComponent {
     }
   }
 
+  openPriceScaleContextMenu(clientX, clientY) {
+    if (this.store.get('isSymbolLoading')) return;
+    if (!this.priceScaleContextMenu) return;
+
+    this.updatePriceScaleAutoCheck();
+
+    this.priceScaleContextMenu.style.visibility = 'hidden';
+    this.priceScaleContextMenu.style.display = 'block';
+
+    const menuRect = this.priceScaleContextMenu.getBoundingClientRect();
+    const menuWidth = menuRect.width || 250;
+    const menuHeight = menuRect.height || 120;
+    const margin = 8;
+
+    let left = clientX;
+    let top = clientY;
+
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = clientX - menuWidth;
+    }
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = window.innerWidth - menuWidth - margin;
+    }
+    if (left < margin) {
+      left = margin;
+    }
+
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = clientY - menuHeight;
+    }
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = window.innerHeight - menuHeight - margin;
+    }
+    if (top < margin) {
+      top = margin;
+    }
+
+    this.priceScaleContextMenu.style.left = `${Math.round(left)}px`;
+    this.priceScaleContextMenu.style.top = `${Math.round(top)}px`;
+    this.priceScaleContextMenu.style.visibility = 'visible';
+    this.isPriceScaleMenuOpen = true;
+  }
+
+  closePriceScaleContextMenu() {
+    if (!this.priceScaleContextMenu) return;
+    this.priceScaleContextMenu.style.display = 'none';
+    this.priceScaleContextMenu.style.visibility = 'visible';
+    this.isPriceScaleMenuOpen = false;
+  }
+
+  updatePriceScaleAutoCheck(forcedVal) {
+    if (!this.iconPriceScaleAutoCheck) return;
+    const isAuto = forcedVal !== undefined
+      ? forcedVal
+      : (this.store.chartController ? this.store.chartController.isPriceAutoScaleEnabled() : true);
+
+    if (isAuto) {
+      this.iconPriceScaleAutoCheck.classList.remove('hidden');
+    } else {
+      this.iconPriceScaleAutoCheck.classList.add('hidden');
+    }
+  }
+
+  openTimeScaleContextMenu(clientX, clientY) {
+    if (this.store.get('isSymbolLoading')) return;
+    if (!this.timeScaleContextMenu) return;
+
+    this.timeScaleContextMenu.style.visibility = 'hidden';
+    this.timeScaleContextMenu.style.display = 'block';
+
+    const menuRect = this.timeScaleContextMenu.getBoundingClientRect();
+    const menuWidth = menuRect.width || 250;
+    const menuHeight = menuRect.height || 80;
+    const margin = 8;
+
+    let left = clientX;
+    // Prefer opening above the bottom time scale click point
+    let top = clientY - menuHeight - 4;
+
+    if (top < margin) {
+      top = clientY + 4;
+    }
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = window.innerHeight - menuHeight - margin;
+    }
+    if (top < margin) {
+      top = margin;
+    }
+
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = clientX - menuWidth;
+    }
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = window.innerWidth - menuWidth - margin;
+    }
+    if (left < margin) {
+      left = margin;
+    }
+
+    this.timeScaleContextMenu.style.left = `${Math.round(left)}px`;
+    this.timeScaleContextMenu.style.top = `${Math.round(top)}px`;
+    this.timeScaleContextMenu.style.visibility = 'visible';
+    this.isTimeScaleMenuOpen = true;
+  }
+
+  closeTimeScaleContextMenu() {
+    if (!this.timeScaleContextMenu) return;
+    this.timeScaleContextMenu.style.display = 'none';
+    this.timeScaleContextMenu.style.visibility = 'visible';
+    this.isTimeScaleMenuOpen = false;
+  }
+
   open(price, clientX, clientY) {
+    if (this.store.get('isSymbolLoading')) return;
     if (!price || isNaN(price)) return;
     this.menuTargetPrice = Number(price);
     this.isMenuOpen = true;
@@ -230,39 +446,57 @@ export class ChartOrderMenuComponent {
 
     this.updateDisplay();
 
-    if (this.menuExecutionsCheck) {
-      const showExecs = this.store.get('showExecutionsOnChart') !== false;
-      this.menuExecutionsCheck.textContent = showExecs ? '✓' : '';
-      this.menuExecutionsCheck.style.color = showExecs ? 'var(--tv-blue, #2962ff)' : 'transparent';
-    }
+    if (!this.chartOrderMenu) return;
 
-    if (!this.chartContainer || !this.chartOrderMenu) return;
+    // Make visible briefly hidden to measure actual DOM dimensions
+    this.chartOrderMenu.style.visibility = 'hidden';
+    this.chartOrderMenu.style.display = 'block';
 
-    const containerRect = this.chartContainer.getBoundingClientRect();
+    const menuRect = this.chartOrderMenu.getBoundingClientRect();
+    const menuWidth = menuRect.width || 330;
+    const menuHeight = menuRect.height || 230;
+
+    const margin = 8;
     let left = clientX;
     let top = clientY;
-    const menuWidth = 320;
-    const menuHeight = 230;
 
-    if (left + menuWidth > containerRect.width - 15) {
-      left = containerRect.width - menuWidth - 65;
+    // Smart horizontal positioning (TradingView standard):
+    // If not enough room to the right of cursor: open to the left of cursor
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = clientX - menuWidth;
     }
-    if (left < 10) left = 10;
-
-    if (top + menuHeight > containerRect.height - 15) {
-      top = containerRect.height - menuHeight - 15;
+    // Strict clamp within window viewport
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = window.innerWidth - menuWidth - margin;
     }
-    if (top < 10) top = 10;
+    if (left < margin) {
+      left = margin;
+    }
 
-    this.chartOrderMenu.style.left = `${left}px`;
-    this.chartOrderMenu.style.top = `${top}px`;
-    this.chartOrderMenu.style.display = 'block';
+    // Smart vertical positioning (TradingView standard):
+    // If not enough room below cursor: open above cursor
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = clientY - menuHeight;
+    }
+    // Strict clamp within window viewport
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = window.innerHeight - menuHeight - margin;
+    }
+    if (top < margin) {
+      top = margin;
+    }
+
+    this.chartOrderMenu.style.left = `${Math.round(left)}px`;
+    this.chartOrderMenu.style.top = `${Math.round(top)}px`;
+    this.chartOrderMenu.style.visibility = 'visible';
   }
 
   close() {
     this.isMenuOpen = false;
+    this.menuTargetPrice = null;
     if (this.chartOrderMenu) {
       this.chartOrderMenu.style.display = 'none';
+      this.chartOrderMenu.style.visibility = 'visible';
     }
   }
 
@@ -343,6 +577,10 @@ export class ChartOrderMenuComponent {
   }
 
   executeChartOrder(side, type) {
+    if (this.store.get('isSymbolLoading')) {
+      showToast('Котировки инструмента загружаются, пожалуйста подождите...', 'warning');
+      return;
+    }
     if (!this.menuTargetPrice || !this.menuLots) return;
     const simulator = this.store.simulator;
     const paperAccount = this.store.paperAccount;
@@ -355,6 +593,17 @@ export class ChartOrderMenuComponent {
     }
 
     const cleanPrice = this.menuTargetPrice >= 10 ? Number(this.menuTargetPrice.toFixed(2)) : Number(this.menuTargetPrice.toFixed(4));
+
+    // Guard against executing order with price from a different ticker/scale
+    const curClose = currentBar.close;
+    if (curClose > 0) {
+      const ratio = cleanPrice / curClose;
+      if (ratio > 1.8 || ratio < 0.55) {
+        showToast(`Цена заявки (${cleanPrice} ₽) сильно отличается от цены инструмента (${curClose} ₽)`, 'error');
+        this.close();
+        return;
+      }
+    }
 
     const res = paperAccount.placeOrder({
       symbol: this.store.get('currentSymbol'),

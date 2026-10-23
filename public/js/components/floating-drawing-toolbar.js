@@ -98,12 +98,19 @@ export class FloatingDrawingToolbarComponent {
     if (origAdd && !dc.__addHooked) {
       dc.__addHooked = true;
       const self = this;
-      dc.add = function(opts, ...rest) {
-        if (opts && opts.tool) {
-          const def = self.getDefaultStyle(opts.tool);
+      dc.add = function(arg1, arg2, ...rest) {
+        if (typeof arg1 === 'string') {
+          const tool = arg1;
+          const opts = arg2 || {};
+          const def = self.getDefaultStyle(tool);
           opts.style = { ...def, ...(opts.style || {}) };
+          return origAdd.call(this, tool, opts, ...rest);
+        } else if (arg1 && arg1.tool) {
+          const def = self.getDefaultStyle(arg1.tool);
+          arg1.style = { ...def, ...(arg1.style || {}) };
+          return origAdd.call(this, arg1, arg2, ...rest);
         }
-        return origAdd.call(this, opts, ...rest);
+        return origAdd.call(this, arg1, arg2, ...rest);
       };
     }
 

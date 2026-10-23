@@ -48,6 +48,12 @@ export class ToolbarComponent {
         this.symbolTickerText.textContent = symbol;
       }
     });
+
+    eventBus.on('symbol:change', ({ ticker }) => {
+      if (this.symbolTickerText && ticker) {
+        this.symbolTickerText.textContent = ticker;
+      }
+    });
   }
 
   initSymbolSelector() {
@@ -97,15 +103,21 @@ export class ToolbarComponent {
           const ticker = item.getAttribute('data-ticker');
           const figi = item.getAttribute('data-figi');
           const lot = Number(item.getAttribute('data-lot')) || 10;
+          const prevSymbol = this.store.get('currentSymbol') || 'SBER';
+
+          if (this.symbolDropdown) this.symbolDropdown.classList.remove('open');
+
+          if (ticker === prevSymbol) {
+            return;
+          }
 
           this.store.set('currentSymbol', ticker);
           this.store.set('currentFigi', figi);
           this.store.set('currentLotSize', lot);
 
           if (this.symbolTickerText) this.symbolTickerText.textContent = ticker;
-          if (this.symbolDropdown) this.symbolDropdown.classList.remove('open');
 
-          eventBus.emit('symbol:change', { ticker, figi, lot });
+          eventBus.emit('symbol:change', { prevSymbol, ticker, figi, lot });
         };
       });
     } catch (err) {

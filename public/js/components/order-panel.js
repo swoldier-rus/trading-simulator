@@ -8,6 +8,7 @@ export class OrderPanelComponent {
 
     // DOM Elements
     this.tvOrderPanel = document.getElementById('tvOrderPanel');
+    this.btnRightOrderPanel = document.getElementById('btnRightOrderPanel');
     this.btnToggleOrderPanel = document.getElementById('btnToggleOrderPanel');
     this.btnCloseOrderPanel = document.getElementById('btnCloseOrderPanel');
     this.tabNavOrder = document.getElementById('tabNavOrder');
@@ -132,8 +133,12 @@ export class OrderPanelComponent {
           if (this.rowLimitPrice) this.rowLimitPrice.style.display = 'flex';
           const simulator = this.store.simulator;
           const currentBar = simulator ? simulator.getCurrentBar() : null;
-          if (currentBar && this.inputLimitPrice && (!this.inputLimitPrice.value || this.inputLimitPrice.value === '0')) {
-            this.inputLimitPrice.value = currentBar.close.toFixed(2);
+          if (currentBar && this.inputLimitPrice) {
+            const curVal = Number(this.inputLimitPrice.value);
+            const close = currentBar.close;
+            if (!curVal || curVal === 0 || curVal / close > 1.8 || curVal / close < 0.55) {
+              this.inputLimitPrice.value = close >= 10 ? close.toFixed(2) : close.toFixed(4);
+            }
           }
         }
         this.updateSubmitButtonDesc();
@@ -257,15 +262,36 @@ export class OrderPanelComponent {
     if (!this.tvOrderPanel) return;
     if (visible) {
       this.tvOrderPanel.classList.remove('collapsed');
+      if (this.btnRightOrderPanel) this.btnRightOrderPanel.classList.add('active');
       if (this.btnToggleOrderPanel) this.btnToggleOrderPanel.classList.add('active');
+
+      // Sync prices with latest current bar when opening panel
+      const sim = this.store.simulator;
+      const currentBar = sim ? sim.getCurrentBar() : null;
+      if (currentBar && !this.store.get('isSymbolLoading')) {
+        this.updateQuickPrices(currentBar.close);
+        if (this.inputLimitPrice) {
+          const curVal = Number(this.inputLimitPrice.value);
+          const close = currentBar.close;
+          if (!curVal || curVal === 0 || curVal / close > 1.8 || curVal / close < 0.55) {
+            this.inputLimitPrice.value = close >= 10 ? close.toFixed(2) : close.toFixed(4);
+          }
+        }
+      }
     } else {
       this.tvOrderPanel.classList.add('collapsed');
+      if (this.btnRightOrderPanel) this.btnRightOrderPanel.classList.remove('active');
       if (this.btnToggleOrderPanel) this.btnToggleOrderPanel.classList.remove('active');
     }
     window.dispatchEvent(new Event('resize'));
   }
 
   executeTrade(side) {
+    if (this.store.get('isSymbolLoading')) {
+      showToast('Котировки инструмента загружаются, пожалуйста подождите...', 'warning');
+      return;
+    }
+
     const simulator = this.store.simulator;
     const paperAccount = this.store.paperAccount;
 
@@ -282,14 +308,24 @@ export class OrderPanelComponent {
 
     const sl = (hasSL && this.inputSL && this.inputSL.value) ? Number(this.inputSL.value) : null;
     const tp = (hasTP && this.inputTP && this.inputTP.value) ? Number(this.inputTP.value) : null;
-    let orderPrice = currentBar.close;
+    const marketPrice = currentBar.close;
+    let orderPrice = marketPrice;
 
     const selectedOrderType = this.store.get('selectedOrderType');
     if (selectedOrderType !== 'MARKET') {
-      orderPrice = Number(this.inputLimitPrice.value);
+      orderPrice = Number(this.inputLimitPrice ? this.inputLimitPrice.value : 0);
       if (!orderPrice || orderPrice <= 0) {
         showToast('Пожалуйста, укажите цену для лимитной/стоп заявки', 'error');
         return;
+      }
+
+      // Guard against lingering price from a previous instrument
+      if (marketPrice > 0) {
+        const ratio = orderPrice / marketPrice;
+        if (ratio > 1.8 || ratio < 0.55) {
+          showToast(`Цена заявки (${orderPrice.toFixed(2)} ₽) сильно отклоняется от текущей цены инструмента (${marketPrice.toFixed(2)} ₽)`, 'error');
+          return;
+        }
       }
 
       // Validate SL and TP relative to order entry price to prevent instant stop-out
@@ -368,6 +404,7 @@ export class OrderPanelComponent {
   }
 
   updateRiskRewardPreview() {
+    if (this.store.get('isSymbolLoading')) return;
     const lots = Number(this.inputLots ? this.inputLots.value : 1) || 1;
     const lotSize = this.store.get('currentLotSize');
     const totalShares = lots * lotSize;
@@ -430,10 +467,61 @@ export class OrderPanelComponent {
   }
 
   updateQuickPrices(closePrice) {
-    if (!closePrice) return;
+    if (!closePrice || this.store.get('isSymbolLoading')) return;
     if (this.panelSellPrice) this.panelSellPrice.textContent = formatRussianPrice(closePrice);
     if (this.panelBuyPrice) this.panelBuyPrice.textContent = formatRussianPrice(closePrice);
     if (this.panelSpreadBadge) this.panelSpreadBadge.textContent = '0,00';
+    this.updateRiskRewardPreview();
+  }
+
+  setLoading(isLoading) {
+    if (this.btnPanelSubmit) {
+      this.btnPanelSubmit.disabled = !!isLoading;
+      this.btnPanelSubmit.classList.toggle('loading', !!isLoading);
+    }
+    if (this.btnDirectionSell) {
+      this.btnDirectionSell.disabled = !!isLoading;
+    }
+    if (this.btnDirectionBuy) {
+      this.btnDirectionBuy.disabled = !!isLoading;
+    }
+    if (isLoading) {
+      if (this.submitActionDesc) this.submitActionDesc.textContent = 'ЗАГРУЗКА ДАННЫХ...';
+      if (this.panelSellPrice) this.panelSellPrice.textContent = '—';
+      if (this.panelBuyPrice) this.panelBuyPrice.textContent = '—';
+      if (this.panelLotEquivVal) this.panelLotEquivVal.textContent = '— ₽';
+      if (this.rrNotional) this.rrNotional.textContent = '— ₽';
+      if (this.inputLimitPrice) this.inputLimitPrice.value = '';
+    } else {
+      this.updateSubmitButtonDesc();
+      const currentBar = this.store.simulator ? this.store.simulator.getCurrentBar() : null;
+      if (currentBar) {
+        this.updateQuickPrices(currentBar.close);
+      }
+    }
+  }
+
+  resetPricesForNewSymbol(currentPrice) {
+    if (!currentPrice || currentPrice <= 0) return;
+    const formatted = currentPrice >= 10 ? currentPrice.toFixed(2) : currentPrice.toFixed(4);
+
+    if (this.inputLimitPrice) {
+      this.inputLimitPrice.value = formatted;
+    }
+
+    const side = this.store.get('currentSelectedSide') || 'BUY';
+    if (this.inputTP && this.toggleTP && this.toggleTP.checked) {
+      const tpSuggest = side === 'BUY' ? currentPrice * 1.015 : currentPrice * 0.985;
+      this.inputTP.value = currentPrice >= 10 ? tpSuggest.toFixed(2) : tpSuggest.toFixed(4);
+    }
+
+    if (this.inputSL && this.toggleSL && this.toggleSL.checked) {
+      const slSuggest = side === 'BUY' ? currentPrice * 0.99 : currentPrice * 1.01;
+      this.inputSL.value = currentPrice >= 10 ? slSuggest.toFixed(2) : slSuggest.toFixed(4);
+    }
+
+    this.updateQuickPrices(currentPrice);
+    this.updateSubmitButtonDesc();
     this.updateRiskRewardPreview();
   }
 }

@@ -215,6 +215,7 @@ export class ModalsComponent {
         }
 
         this.updateIndicatorBadge();
+        eventBus.emit('indicators:change');
       };
     });
   }

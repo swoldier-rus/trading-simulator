@@ -136,12 +136,38 @@
 .replay-btn-group .tv-btn-replay {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
+  background-color: transparent;
+  color: #d1d4dc;
+  border: 1px solid #363a45;
+  font-weight: 500;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.replay-btn-group .tv-btn-replay:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: #434651;
+}
+
+.replay-btn-group .tv-btn-replay.active {
+  background-color: rgba(41, 98, 255, 0.16) !important;
+  color: #2962ff !important;
+  border-color: #2962ff !important;
+}
+
+.replay-btn-group .tv-btn-replay.active:hover {
+  background-color: rgba(41, 98, 255, 0.26) !important;
+  color: #ffffff !important;
 }
 
 .tv-btn-replay-dropdown {
-  background-color: rgba(245, 166, 35, 0.15);
-  color: var(--tv-yellow);
-  border: 1px solid rgba(245, 166, 35, 0.3);
+  background-color: transparent;
+  color: #787b86;
+  border: 1px solid #363a45;
   border-left: none;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
@@ -151,11 +177,24 @@
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
+  height: 28px;
+  box-sizing: border-box;
 }
 
 .tv-btn-replay-dropdown:hover {
-  background-color: rgba(245, 166, 35, 0.25);
+  background-color: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+.replay-btn-group.active .tv-btn-replay-dropdown {
+  border-color: #2962ff;
+  color: #2962ff;
+  background-color: rgba(41, 98, 255, 0.16);
+}
+
+.replay-btn-group.active .tv-btn-replay-dropdown:hover {
+  background-color: rgba(41, 98, 255, 0.26);
+  color: #ffffff;
 }
 
 .replay-start-point-btn {

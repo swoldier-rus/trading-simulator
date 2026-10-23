@@ -129,7 +129,13 @@ export class BottomDockComponent {
         if (!paperAccount) return;
         if (confirm('Сбросить весь торговый счет, баланс и историю симуляции?')) {
           this.renderedTradesSet.clear();
+          if (this.tradesTableBody) {
+            this.tradesTableBody.innerHTML = '<tr class="empty-row"><td colspan="11" class="text-center">Нет совершенных сделок</td></tr>';
+          }
           paperAccount.reset();
+          if (this.store.sessionService) {
+            this.store.sessionService.resetSession();
+          }
           showToast('Счет симулятора сброшен к исходному состоянию', 'info');
           this.flushUpdate(paperAccount.getPerformanceMetrics());
         }
@@ -159,8 +165,21 @@ export class BottomDockComponent {
   }
 
   initTableDelegation() {
+    const handleSymbolClick = (e) => {
+      const symbolLink = e.target.closest('[data-switch-symbol]');
+      if (symbolLink) {
+        e.stopPropagation();
+        const ticker = symbolLink.getAttribute('data-switch-symbol');
+        this.switchToSymbol(ticker);
+        return true;
+      }
+      return false;
+    };
+
     if (this.positionsTableBody) {
       this.positionsTableBody.addEventListener('click', (e) => {
+        if (handleSymbolClick(e)) return;
+
         const closeBtn = e.target.closest('[data-close-pos]');
         if (closeBtn) {
           e.stopPropagation();
@@ -180,6 +199,8 @@ export class BottomDockComponent {
 
     if (this.ordersTableBody) {
       this.ordersTableBody.addEventListener('click', (e) => {
+        if (handleSymbolClick(e)) return;
+
         const editBtn = e.target.closest('[data-edit-order]');
         if (editBtn) {
           e.stopPropagation();
@@ -199,6 +220,50 @@ export class BottomDockComponent {
         }
       });
     }
+
+    if (this.tradesTableBody) {
+      this.tradesTableBody.addEventListener('click', (e) => {
+        handleSymbolClick(e);
+      });
+    }
+
+    eventBus.on('symbol:change', () => {
+      this.updateActiveSymbolLinks();
+    });
+  }
+
+  switchToSymbol(ticker) {
+    if (!ticker) return;
+    const currentSymbol = this.store.get('currentSymbol');
+    if (ticker === currentSymbol) return;
+
+    let figi = '';
+    let lot = 10;
+    if (this.store.portfolioDataService) {
+      const inst = this.store.portfolioDataService.getInstrumentInfo(ticker);
+      if (inst) {
+        figi = inst.figi || '';
+        lot = inst.lot || 10;
+      }
+    }
+
+    this.store.set('currentSymbol', ticker);
+    this.store.set('currentFigi', figi);
+    this.store.set('currentLotSize', lot);
+
+    eventBus.emit('symbol:change', { prevSymbol: currentSymbol, ticker, figi, lot });
+    this.updateActiveSymbolLinks();
+  }
+
+  updateActiveSymbolLinks() {
+    const currentSymbol = this.store.get('currentSymbol');
+    const allLinks = document.querySelectorAll('.table-symbol-link');
+    allLinks.forEach(link => {
+      const sym = link.getAttribute('data-switch-symbol');
+      const isActive = sym === currentSymbol;
+      link.classList.toggle('active', isActive);
+      link.title = isActive ? `Текущий график ${sym}` : `Открыть график ${sym}`;
+    });
   }
 
   handleClosePosition(id) {
@@ -206,15 +271,17 @@ export class BottomDockComponent {
     const paperAccount = this.store.paperAccount;
     if (!paperAccount) return;
 
-    const currentBar = simulator ? simulator.getCurrentBar() : null;
     const pos = paperAccount.positions.find(p => p.id === id || p.symbol === id);
     if (!pos) return;
 
-    const execPrice = currentBar ? currentBar.close : pos.currentPrice;
-    const res = paperAccount.closePosition(pos.id, execPrice, currentBar ? currentBar.time : null, 'Вручную');
+    const currentSymbol = this.store.get('currentSymbol');
+    const currentBar = simulator ? simulator.getCurrentBar() : null;
+    const execPrice = (currentBar && pos.symbol === currentSymbol) ? currentBar.close : pos.currentPrice;
+    const execTime = currentBar ? currentBar.time : Math.floor(Date.now() / 1000);
+    const res = paperAccount.closePosition(pos.id, execPrice, execTime, 'Вручную');
     if (res.ok) {
       const pnlSign = res.trade.pnl >= 0 ? '+' : '';
-      showToast(`Позиция закрыта: ${pnlSign}${formatMoney(res.trade.pnl)}`, res.trade.pnl >= 0 ? 'success' : 'info');
+      showToast(`Позиция ${pos.symbol} закрыта: ${pnlSign}${formatMoney(res.trade.pnl)}`, res.trade.pnl >= 0 ? 'success' : 'info');
     }
     this.flushUpdate(paperAccount.getPerformanceMetrics());
   }
@@ -226,8 +293,11 @@ export class BottomDockComponent {
 
     const pos = paperAccount.positions.find(p => p.id === id || p.symbol === id);
     if (pos) {
+      const currentSymbol = this.store.get('currentSymbol');
       const bar = simulator ? simulator.getCurrentBar() : null;
-      paperAccount.reversePosition(pos.id, bar ? bar.close : pos.currentPrice, bar ? bar.time : null);
+      const execPrice = (bar && pos.symbol === currentSymbol) ? bar.close : pos.currentPrice;
+      const execTime = bar ? bar.time : Math.floor(Date.now() / 1000);
+      paperAccount.reversePosition(pos.id, execPrice, execTime);
       showToast(`Позиция ${pos.symbol} перевернута!`, 'info');
     }
     this.flushUpdate(paperAccount.getPerformanceMetrics());
@@ -310,19 +380,28 @@ export class BottomDockComponent {
 
     const activeIds = new Set();
 
+    const currentSymbol = this.store.get('currentSymbol');
+
     for (const pos of paperAccount.positions) {
       activeIds.add(pos.id);
       const isLong = pos.side === 'BUY';
+      const isActive = pos.symbol === currentSymbol;
       const pnlClass = pos.unrealizedPnL >= 0 ? 'text-positive' : 'text-negative';
       const pnlSign = pos.unrealizedPnL >= 0 ? '+' : '';
       const pnlText = `${pnlSign}${pos.unrealizedPnL.toFixed(2)} ₽`;
       const pnlPctText = `${pnlSign}${pos.unrealizedPnLPercent.toFixed(2)}%`;
       const curPriceText = `${pos.currentPrice.toFixed(2)} ₽`;
+      const symbolHtml = `<span class="table-symbol-link ${isActive ? 'active' : ''}" data-switch-symbol="${pos.symbol}" title="${isActive ? 'Текущий график ' + pos.symbol : 'Открыть график ' + pos.symbol}">${pos.symbol}</span>`;
 
       let tr = this.positionsTableBody.querySelector(`tr[data-pos-id="${pos.id}"]`);
 
       if (tr) {
         // Row already exists: update ONLY dynamic fields in place!
+        const elSym = tr.querySelector('[data-field="symbol"]');
+        if (elSym && elSym.innerHTML !== symbolHtml) {
+          elSym.innerHTML = symbolHtml;
+        }
+
         const elPrice = tr.querySelector('[data-field="curPrice"]');
         if (elPrice && elPrice.textContent !== curPriceText) {
           elPrice.textContent = curPriceText;
@@ -354,7 +433,7 @@ export class BottomDockComponent {
         tr = document.createElement('tr');
         tr.setAttribute('data-pos-id', pos.id);
         tr.innerHTML = `
-          <td><strong>${pos.symbol}</strong></td>
+          <td data-field="symbol">${symbolHtml}</td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
           <td data-field="lots">${pos.lots}</td>
           <td data-field="qty">${pos.qty}</td>
@@ -401,12 +480,22 @@ export class BottomDockComponent {
 
     const activeIds = new Set();
 
+    const currentSymbol = this.store.get('currentSymbol');
+
     for (const ord of paperAccount.orders) {
       activeIds.add(ord.id);
       const isLong = ord.side === 'BUY';
+      const isActive = ord.symbol === currentSymbol;
+      const symbolHtml = `<span class="table-symbol-link ${isActive ? 'active' : ''}" data-switch-symbol="${ord.symbol}" title="${isActive ? 'Текущий график ' + ord.symbol : 'Открыть график ' + ord.symbol}">${ord.symbol}</span>`;
       let tr = this.ordersTableBody.querySelector(`tr[data-order-id="${ord.id}"]`);
 
       if (tr) {
+        // Update symbol if changed
+        const elSym = tr.querySelector('[data-field="symbol"]');
+        if (elSym && elSym.innerHTML !== symbolHtml) {
+          elSym.innerHTML = symbolHtml;
+        }
+
         // Update price or lots if changed
         const elPrice = tr.querySelector('[data-field="price"]');
         const expectedPrice = `${ord.price.toFixed(2)} ₽`;
@@ -424,7 +513,7 @@ export class BottomDockComponent {
         tr.setAttribute('data-order-id', ord.id);
         tr.innerHTML = `
           <td><span style="font-family: monospace; font-size: 11px;">${ord.id.slice(-6)}</span></td>
-          <td><strong>${ord.symbol}</strong></td>
+          <td data-field="symbol">${symbolHtml}</td>
           <td><span style="font-weight: 600;">${ord.type}</span></td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'BUY' : 'SELL'}</span></td>
           <td><span data-field="lots" data-lots-val="${ord.lots}"><strong>${ord.lots}</strong> (${ord.qty} шт.)</span></td>
@@ -464,16 +553,19 @@ export class BottomDockComponent {
     if (emptyRow) emptyRow.remove();
 
     // Check for newly closed trades not yet in renderedTradesSet
+    const currentSymbol = this.store.get('currentSymbol');
     for (const tr of paperAccount.tradeHistory) {
       if (this.renderedTradesSet.has(tr.id)) continue;
       this.renderedTradesSet.add(tr.id);
 
       const isLong = tr.side === 'BUY';
+      const isActive = tr.symbol === currentSymbol;
       const pnlClass = tr.pnl >= 0 ? 'text-positive' : 'text-negative';
+      const symbolHtml = `<span class="table-symbol-link ${isActive ? 'active' : ''}" data-switch-symbol="${tr.symbol}" title="${isActive ? 'Текущий график ' + tr.symbol : 'Открыть график ' + tr.symbol}">${tr.symbol}</span>`;
       const row = document.createElement('tr');
       row.setAttribute('data-trade-id', tr.id);
       row.innerHTML = `
-        <td><strong>${tr.symbol}</strong></td>
+        <td data-field="symbol">${symbolHtml}</td>
         <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
         <td>${tr.lots} (${tr.qty} шт.)</td>
         <td>${tr.entryPrice.toFixed(2)} ₽</td>

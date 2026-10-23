@@ -7,6 +7,8 @@ import { PaperTradingAccount } from './paper-trading.js';
 import { MarketSimulator } from './simulator.js';
 import { IndicatorManager } from './indicators.js';
 import { showToast, timeframeToSeconds } from './core/utils.js';
+import { SessionPersistenceService } from './services/session.service.js';
+import { PortfolioMarketDataService } from './services/portfolio-data.service.js';
 
 // Components
 import { ChartControllerComponent } from './components/chart-controller.js';
@@ -24,6 +26,8 @@ import { FloatingDrawingToolbarComponent } from './components/floating-drawing-t
 import { DrawingSettingsModalComponent } from './components/drawing-settings-modal.js';
 import { EditOrderModalComponent } from './components/edit-order-modal.js';
 import { ChartStyleModalComponent } from './components/chart-style-modal.js';
+import { RightRailComponent } from './components/right-rail.js';
+import { SessionBreaksOverlayComponent } from './components/session-breaks-overlay.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -49,17 +53,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   const floatingDrawingToolbar = new FloatingDrawingToolbarComponent(store);
   const editOrderModal = new EditOrderModalComponent(store);
   const chartStyleModal = new ChartStyleModalComponent(store);
+  const rightRail = new RightRailComponent(store);
+  const sessionBreaksOverlay = new SessionBreaksOverlayComponent(store);
 
   store.chartController = chartController;
   store.replayBar = replayBar;
   store.tradeLinesOverlay = tradeLinesOverlay;
   store.tradeExecutionsOverlay = tradeExecutionsOverlay;
+  store.sessionBreaksOverlay = sessionBreaksOverlay;
   store.quickTradeWidget = quickTradeWidget;
   store.drawingSettingsModal = drawingSettingsModal;
   store.floatingDrawingToolbar = floatingDrawingToolbar;
   store.editOrderModal = editOrderModal;
   store.chartStyleModal = chartStyleModal;
+  store.rightRail = rightRail;
+  store.chartOrderMenu = chartOrderMenu;
   store.indicatorManager = new IndicatorManager(store.chart);
+  store.components = {
+    chartController,
+    tradeLinesOverlay,
+    tradeExecutionsOverlay,
+    sessionBreaksOverlay,
+    drawingRail,
+    toolbar,
+    orderPanel,
+    chartOrderMenu,
+    bottomDock,
+    replayBar,
+    modals,
+    drawingSettingsModal,
+    floatingDrawingToolbar,
+    editOrderModal,
+    chartStyleModal,
+    rightRail,
+    quickTradeWidget
+  };
+
+  const sessionService = new SessionPersistenceService(store);
+  store.sessionService = sessionService;
+  sessionService.init();
+
+  const portfolioDataService = new PortfolioMarketDataService(store);
+  await portfolioDataService.init();
+  store.portfolioDataService = portfolioDataService;
 
   // 3. Connect Paper Trading Account Listeners
   paperAccount.onAccountUpdate = (metrics) => {
@@ -87,15 +123,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Process orders & SL/TP triggers sequentially per tick
+    const currentSymbol = store.get('currentSymbol');
     if (!isBackward) {
-      const currentSymbol = store.get('currentSymbol');
       const events = paperAccount.onPriceTick(candle.close, candle.time, currentSymbol, candle);
       if (events && events.length > 0) {
         events.forEach(ev => showToast(ev.message, ev.type === 'ORDER_FILLED' ? 'info' : 'success'));
       }
     } else {
-      paperAccount.onCandle(candle, store.get('currentSymbol'));
+      paperAccount.onCandle(candle, currentSymbol);
     }
+
+    // Synchronize all background portfolio positions and orders at current simulation time!
+    portfolioDataService.updatePortfolio(candle.time);
 
     if (store.quickTradeWidget) {
       store.quickTradeWidget.updatePrice(candle);
@@ -178,14 +217,67 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   eventBus.on('replay:scrubbed', () => {
+    const curBar = simulator.getCurrentBar();
+    if (curBar && curBar.time) {
+      portfolioDataService.updatePortfolio(curBar.time);
+    }
     const remaining = simulator.allCandles.length - simulator.currentIndex;
     if (remaining <= simulator.prefetchThreshold) {
       prefetchSubsequentBars();
     }
   });
 
-  // 6. Candle Pipeline Loader
-  async function loadCandles(targetBarTime = null, preserveReplay = false) {
+  // 6. Candle Pipeline Loader & Symbol Loading State Controller
+  function setSymbolLoadingState(isLoading) {
+    store.set('isSymbolLoading', !!isLoading);
+
+    if (isLoading && store.chartOrderMenu && typeof store.chartOrderMenu.close === 'function') {
+      store.chartOrderMenu.close();
+      if (typeof store.chartOrderMenu.closeTimeScaleContextMenu === 'function') {
+        store.chartOrderMenu.closeTimeScaleContextMenu();
+      }
+      if (typeof store.chartOrderMenu.closePriceScaleContextMenu === 'function') {
+        store.chartOrderMenu.closePriceScaleContextMenu();
+      }
+    }
+
+    const loader = document.getElementById('chartDataLoader');
+    if (loader) {
+      loader.style.display = isLoading ? 'inline-flex' : 'none';
+    }
+
+    if (isLoading) {
+      const valOpen = document.getElementById('valOpen');
+      const valHigh = document.getElementById('valHigh');
+      const valLow = document.getElementById('valLow');
+      const valClose = document.getElementById('valClose');
+      const valChange = document.getElementById('valChange');
+      const valVolume = document.getElementById('valVolume');
+      if (valOpen) valOpen.textContent = '—';
+      if (valHigh) valHigh.textContent = '—';
+      if (valLow) valLow.textContent = '—';
+      if (valClose) valClose.textContent = '—';
+      if (valChange) {
+        valChange.textContent = '—';
+        valChange.className = '';
+      }
+      if (valVolume) valVolume.textContent = '—';
+    }
+
+    if (orderPanel && typeof orderPanel.setLoading === 'function') {
+      orderPanel.setLoading(!!isLoading);
+    }
+
+    if (store.quickTradeWidget && typeof store.quickTradeWidget.setLoading === 'function') {
+      store.quickTradeWidget.setLoading(!!isLoading);
+    }
+  }
+
+  async function loadCandles(targetBarTime = null, preserveReplay = false, isSymbolChange = false) {
+    if (isSymbolChange) {
+      setSymbolLoadingState(true);
+    }
+
     const currentSymbol = store.get('currentSymbol');
     const currentFigi = store.get('currentFigi');
     const currentTimeframe = store.get('currentTimeframe');
@@ -246,13 +338,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (store.mainSeries) {
           store.mainSeries.setData(visibleBars);
-          if (store.chart) store.chart.fitContent();
+          if (isSymbolChange) {
+            chartController.resetStateForNewInstrument(12, 7.5);
+          } else if (store.chart) {
+            store.chart.fitContent();
+          }
+        }
+
+        if (currentSymbol && data.candles) {
+          portfolioDataService.candlesBySymbol.set(currentSymbol, data.candles);
         }
 
         const latest = visibleBars[visibleBars.length - 1];
         if (latest) {
+          portfolioDataService.updatePortfolio(latest.time);
           chartController.updateLegend(latest);
           orderPanel.updateQuickPrices(latest.close);
+          if (isSymbolChange && orderPanel && typeof orderPanel.resetPricesForNewSymbol === 'function') {
+            orderPanel.resetPricesForNewSymbol(latest.close);
+          }
           if (store.quickTradeWidget) {
             store.quickTradeWidget.updatePrice(latest);
           }
@@ -264,6 +368,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       console.error('Error in loadCandles:', err);
       showToast('Ошибка загрузки данных котировок', 'error');
+    } finally {
+      if (isSymbolChange) {
+        setSymbolLoadingState(false);
+      }
     }
   }
 
@@ -278,14 +386,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isHistorical = barInfo.isReplay || barInfo.isScrolled || (targetSec && (nowSec - targetSec > 86400 * 2));
 
     if (isHistorical && targetSec) {
-      await loadCandles(targetSec, barInfo.isReplay);
+      await loadCandles(targetSec, barInfo.isReplay, false);
     } else {
-      await loadCandles(null, false);
+      await loadCandles(null, false, false);
     }
   });
 
-  eventBus.on('symbol:change', async () => {
-    await loadCandles();
+  eventBus.on('symbol:change', async ({ prevSymbol, ticker } = {}) => {
+    setSymbolLoadingState(true);
+    try {
+      if (prevSymbol && simulator && simulator.allCandles && simulator.allCandles.length > 0) {
+        portfolioDataService.candlesBySymbol.set(prevSymbol, simulator.allCandles);
+      }
+      const isReplay = simulator && simulator.isReplayActive;
+      let simTime = null;
+
+      if (isReplay) {
+        simulator.pause();
+        const currentBar = simulator.getCurrentBar();
+        if (currentBar && currentBar.time) {
+          simTime = currentBar.time;
+        }
+      }
+
+      if (simTime) {
+        // Replay is active: preserve exact simulation time across ticker switch!
+        await loadCandles(simTime, true, true);
+        eventBus.emit('replay:scrubbed');
+      } else {
+        // Replay was inactive: load candles up to latest
+        await loadCandles(null, false, true);
+      }
+    } finally {
+      setSymbolLoadingState(false);
+    }
   });
 
   eventBus.on('settings:saved', async () => {
@@ -295,6 +429,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 7. Global Keyboard Shortcuts
   window.addEventListener('keydown', (e) => {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+
+    if (store.get('isSymbolLoading')) {
+      if (e.code === 'Space' || e.code === 'ArrowRight' || e.code === 'ArrowLeft' ||
+          e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И' ||
+          e.key === 's' || e.key === 'S' || e.key === 'ы' || e.key === 'Ы') {
+        e.preventDefault();
+        showToast('Котировки инструмента загружаются, пожалуйста подождите...', 'warning');
+        return;
+      }
+    }
 
     if (e.code === 'Space') {
       e.preventDefault();
@@ -331,10 +475,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       orderPanel.executeTrade('SELL');
     } else if (e.altKey && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К')) {
       e.preventDefault();
-      const chart = store.chart;
-      if (chart && typeof chart.resetScale === 'function') {
-        chart.resetScale();
-        showToast('Состояние графика сброшено (Alt+R)', 'info');
+      if (chartController) {
+        chartController.resetFullChartScale();
       }
     }
   });
@@ -345,12 +487,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     mainSeries: store.mainSeries,
     simulator,
     paperAccount,
+    portfolioDataService,
     store,
     eventBus,
     components: {
       chartController,
       tradeLinesOverlay,
       tradeExecutionsOverlay,
+      sessionBreaksOverlay,
       drawingRail,
       toolbar,
       orderPanel,
@@ -361,12 +505,42 @@ document.addEventListener('DOMContentLoaded', async () => {
       drawingSettingsModal,
       floatingDrawingToolbar,
       editOrderModal,
-      chartStyleModal
+      chartStyleModal,
+      rightRail
     },
     loadCandles,
-    prefetchSubsequentBars
+    prefetchSubsequentBars,
+    setSymbolLoadingState
   };
 
-  // 9. Startup Initial Data Load
-  await loadCandles();
+  // 9. Startup Initial Data Load & Session Restoration
+  const savedSession = sessionService.getSavedSession();
+  let targetBarTime = null;
+  let preserveReplay = true; // Primary mode: Replay is active by default
+
+  if (savedSession) {
+    if (savedSession.symbol) store.set('currentSymbol', savedSession.symbol);
+    if (savedSession.timeframe) store.set('currentTimeframe', savedSession.timeframe);
+    if (savedSession.chartType) store.set('currentChartType', savedSession.chartType);
+
+    if (savedSession.replay) {
+      targetBarTime = savedSession.replay.currentBarTime || null;
+      // If user explicitly turned replay off in previous session, respect that
+      if (savedSession.replay.isActive === false) {
+        preserveReplay = false;
+      }
+    }
+  }
+
+  await loadCandles(targetBarTime, preserveReplay);
+
+  if (savedSession) {
+    await sessionService.restoreSession(savedSession);
+    await portfolioDataService.preloadActiveSymbols(targetBarTime);
+    showToast('Торговая сессия восстановлена', 'info');
+  } else {
+    // Fresh session: start in Replay mode by default with standard zoom
+    simulator.enableReplay();
+    eventBus.emit('chart:reset_state_preserving_zoom', 12);
+  }
 });

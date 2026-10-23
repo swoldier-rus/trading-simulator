@@ -118,12 +118,29 @@ export class ReplayBarComponent {
       if (!simulator) return;
 
       if (simulator.isReplayActive) {
+        // Save current historical point before disabling
+        const curBar = simulator.getCurrentBar();
+        if (curBar && curBar.time) {
+          this.lastReplayTime = curBar.time;
+        }
         simulator.disableReplay();
         const mainSeries = this.store.mainSeries;
         if (mainSeries) mainSeries.setData(simulator.allCandles);
         if (this.store.chart) this.store.chart.fitContent();
+        showToast('Режим Replay выключен (показаны последние данные)', 'info');
       } else {
-        simulator.enableReplay();
+        if (this.lastReplayTime) {
+          simulator.jumpToBar(this.lastReplayTime);
+          const mainSeries = this.store.mainSeries;
+          if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
+          eventBus.emit('chart:reset_state_preserving_zoom', 12);
+          eventBus.emit('replay:scrubbed');
+          showToast('Режим Replay включен (возврат к сохранённой точке)', 'info');
+        } else {
+          simulator.enableReplay();
+          eventBus.emit('chart:reset_state_preserving_zoom', 12);
+          showToast('Режим Replay включен', 'info');
+        }
       }
     };
 
@@ -181,10 +198,15 @@ export class ReplayBarComponent {
       this.btnExitReplay.onclick = () => {
         const simulator = this.store.simulator;
         if (!simulator) return;
+        const curBar = simulator.getCurrentBar();
+        if (curBar && curBar.time) {
+          this.lastReplayTime = curBar.time;
+        }
         simulator.disableReplay();
         const mainSeries = this.store.mainSeries;
         if (mainSeries) mainSeries.setData(simulator.allCandles);
         if (this.store.chart) this.store.chart.fitContent();
+        showToast('Режим Replay выключен (показаны последние данные)', 'info');
       };
     }
 
@@ -221,6 +243,7 @@ export class ReplayBarComponent {
       this.optStartBar.onclick = () => {
         this.startPointMenu.style.display = 'none';
         this.store.set('isSelectingJumpBar', true);
+        eventBus.emit('tool:reset');
         if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
         if (this.btnReplayStartPoint) this.btnReplayStartPoint.classList.add('active');
         showToast('Кликните на любую свечу на графике, чтобы начать симуляцию с этого момента', 'info');
@@ -362,7 +385,10 @@ export class ReplayBarComponent {
         if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
         eventBus.emit('chart:reset_state_preserving_zoom', 12);
         eventBus.emit('replay:scrubbed');
-        showToast('Симуляция начата с первой доступной свечи', 'success');
+        if (this.store.sessionService) {
+          this.store.sessionService.resetSession({ newTime: simulator.getCurrentBar()?.time });
+        }
+        showToast('Симуляция начата с первой доступной свечи. Торговый счет сброшен.', 'success');
         return;
       }
 
@@ -384,7 +410,10 @@ export class ReplayBarComponent {
         eventBus.emit('replay:scrubbed');
         const startBar = simulator.getCurrentBar();
         const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
-        showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}`, 'success');
+        if (this.store.sessionService) {
+          this.store.sessionService.resetSession({ newTime: startBar?.time || earliestSec });
+        }
+        showToast(`Симуляция начата с первой доступной даты: ${dateFormatted}. Торговый счет сброшен.`, 'success');
       } else {
         showToast('Данные за указанный период отсутствуют в T-Invest API', 'warning');
       }
@@ -439,7 +468,10 @@ export class ReplayBarComponent {
         eventBus.emit('replay:scrubbed');
         const cur = simulator.getCurrentBar();
         const dateFormatted = cur ? formatTimestamp(cur.time) : formatTimestamp(snappedRandomSec);
-        showToast(`Случайный момент истории: ${dateFormatted}! Слепой тест готов.`, 'success');
+        if (this.store.sessionService) {
+          this.store.sessionService.resetSession({ newTime: cur?.time || snappedRandomSec });
+        }
+        showToast(`Случайный момент истории: ${dateFormatted}! Торговый счет сброшен для новой сессии.`, 'success');
       } else {
         showToast('Данные за указанный период отсутствуют в T-Invest API', 'warning');
       }
@@ -479,7 +511,10 @@ export class ReplayBarComponent {
         if (mainSeries) mainSeries.setData(simulator.getVisibleCandles());
         eventBus.emit('chart:reset_state_preserving_zoom', 12);
         eventBus.emit('replay:scrubbed');
-        showToast(`Перешли к дате: ${formatTimestamp(targetSec)}`, 'success');
+        if (this.store.sessionService) {
+          this.store.sessionService.resetSession({ newTime: targetSec });
+        }
+        showToast(`Перешли к дате: ${formatTimestamp(targetSec)}. Торговый счет сброшен.`, 'success');
         return;
       }
     }
@@ -508,7 +543,10 @@ export class ReplayBarComponent {
           eventBus.emit('chart:reset_state_preserving_zoom', 12);
         }
         eventBus.emit('replay:scrubbed');
-        showToast(`История загружена! Перешли к дате: ${formatTimestamp(targetSec)}`, 'success');
+        if (this.store.sessionService) {
+          this.store.sessionService.resetSession({ newTime: targetSec });
+        }
+        showToast(`История загружена! Перешли к дате: ${formatTimestamp(targetSec)}. Торговый счет сброшен.`, 'success');
       } else {
         showToast('По выбранной дате котировки не найдены на бирже', 'error');
       }
@@ -554,8 +592,12 @@ export class ReplayBarComponent {
     if (this.btnToggleReplay) {
       this.btnToggleReplay.classList.toggle('active', isActive);
     }
+    const replayBtnGroup = this.btnToggleReplay?.closest('.replay-btn-group');
+    if (replayBtnGroup) {
+      replayBtnGroup.classList.toggle('active', isActive);
+    }
     if (this.btnReplayText) {
-      this.btnReplayText.textContent = isActive ? 'Симулятор ВКЛ' : 'Симулятор (История)';
+      this.btnReplayText.textContent = 'Replay';
     }
   }
 

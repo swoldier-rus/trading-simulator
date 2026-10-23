@@ -538,6 +538,20 @@
   transition: all 0.15s ease;
 }
 
+.btn-panel-submit:disabled,
+.btn-panel-submit.loading {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+}
+
+.panel-direction-btn:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
 .btn-panel-submit.buy {
   background-color: #2962ff;
   color: #ffffff;

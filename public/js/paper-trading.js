@@ -33,6 +33,39 @@ class PaperTradingAccount {
     this.notifyUpdate();
   }
 
+  // Export full account state for session persistence
+  exportState() {
+    return {
+      initialBalance: this.initialBalance,
+      balance: this.balance,
+      commissionRate: this.commissionRate,
+      positions: JSON.parse(JSON.stringify(this.positions || [])),
+      orders: JSON.parse(JSON.stringify(this.orders || [])),
+      tradeHistory: JSON.parse(JSON.stringify(this.tradeHistory || [])),
+      equityHistory: JSON.parse(JSON.stringify(this.equityHistory || [])),
+      peakEquity: this.peakEquity,
+      maxDrawdownRub: this.maxDrawdownRub,
+      maxDrawdownPct: this.maxDrawdownPct
+    };
+  }
+
+  // Restore full account state from session storage
+  importState(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (state.initialBalance !== undefined) this.initialBalance = Number(state.initialBalance);
+    if (state.balance !== undefined) this.balance = Number(state.balance);
+    if (state.commissionRate !== undefined) this.commissionRate = Number(state.commissionRate);
+    if (Array.isArray(state.positions)) this.positions = JSON.parse(JSON.stringify(state.positions));
+    if (Array.isArray(state.orders)) this.orders = JSON.parse(JSON.stringify(state.orders));
+    if (Array.isArray(state.tradeHistory)) this.tradeHistory = JSON.parse(JSON.stringify(state.tradeHistory));
+    if (Array.isArray(state.equityHistory)) this.equityHistory = JSON.parse(JSON.stringify(state.equityHistory));
+    if (state.peakEquity !== undefined) this.peakEquity = Number(state.peakEquity);
+    if (state.maxDrawdownRub !== undefined) this.maxDrawdownRub = Number(state.maxDrawdownRub);
+    if (state.maxDrawdownPct !== undefined) this.maxDrawdownPct = Number(state.maxDrawdownPct);
+    this.notifyUpdate();
+    return true;
+  }
+
   // Open an order (Market or Limit/Stop) on historical data
   placeOrder({ symbol, side, type = 'MARKET', qty, price, sl = null, tp = null, time = null, lotSize = 1 }) {
     qty = Number(qty);
@@ -634,7 +667,7 @@ class PaperTradingAccount {
             order: ord,
             fillPrice,
             position: res.position,
-            message: `Исполнена заявка ${ord.type} ${ord.side} по цене ${fillPrice.toFixed(2)} ₽`
+            message: `Исполнена заявка ${ord.symbol} ${ord.type} ${ord.side} по цене ${fillPrice.toFixed(2)} ₽`
           });
         }
       }
@@ -674,7 +707,7 @@ class PaperTradingAccount {
           events.push({
             type: 'POSITION_CLOSED',
             trade,
-            message: `Позиция ${pos.side} закрыта по ${reason} по цене ${exitPrice.toFixed(2)} ₽ (PnL: ${trade.pnl > 0 ? '+' : ''}${trade.pnl} ₽)`
+            message: `Позиция ${pos.symbol} (${pos.side === 'BUY' ? 'LONG' : 'SHORT'}) закрыта по ${reason} по цене ${exitPrice.toFixed(2)} ₽ (PnL: ${trade.pnl > 0 ? '+' : ''}${trade.pnl} ₽)`
           });
         }
       } else {
