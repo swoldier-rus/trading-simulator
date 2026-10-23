@@ -127,7 +127,36 @@ export class ChartOrderMenuComponent {
           return;
         }
 
-        // 3. Regular chart canvas area
+        // 3. Drawing tools interception: right click finishes or cancels drawing (TradingView standard)
+        const dc = this.store.drawingController;
+        if (dc) {
+          const activeTool = typeof dc.activeTool === 'function' ? dc.activeTool() : dc._tool;
+          const pendingCount = Array.isArray(dc._pending) ? dc._pending.length : 0;
+
+          if (activeTool && activeTool !== 'cursor') {
+            // Case 1: Multi-point path/polyline with 2 or more points placed -> finish drawing
+            if ((activeTool === 'path' || activeTool === 'polyline') && pendingCount >= 2) {
+              if (typeof dc.finish === 'function') {
+                dc.finish('rightclick');
+              }
+            } else {
+              // Case 2: Multi-point with < 2 points, or any other drawing tool -> cancel drawing
+              if (typeof dc.cancel === 'function') {
+                dc.cancel();
+              } else if (typeof dc.setTool === 'function') {
+                dc.setTool(null);
+              }
+            }
+
+            eventBus.emit('tool:reset');
+            this.close();
+            this.closeTimeScaleContextMenu();
+            this.closePriceScaleContextMenu();
+            return;
+          }
+        }
+
+        // 4. Regular chart canvas area (when no drawing tool is active)
         this.closeTimeScaleContextMenu();
         this.closePriceScaleContextMenu();
         const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
