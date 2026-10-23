@@ -263,6 +263,13 @@ export class ChartControllerComponent {
       // Initial alignment of indicator legends below BUY/SELL quick trading widget
       setTimeout(() => this.syncIndicatorLegendOffset(), 100);
 
+      // Configure OpenAlgo volume indicator to render on-chart at bottom (TradingView style)
+      this.configureVolumeIndicatorDescriptor();
+      const savedShowVolume = localStorage.getItem('trading_simulator_show_volume') === 'true';
+      if (savedShowVolume) {
+        setTimeout(() => this.enableOnChartVolume(), 200);
+      }
+
       eventBus.on('bar:tick', (bar) => {
         this.updateLegend(bar);
         this.syncTradeOverlays(bar.close);
@@ -466,6 +473,117 @@ export class ChartControllerComponent {
     if (this.store.sessionBreaksOverlay) {
       this.store.sessionBreaksOverlay.scheduleRender();
     }
+    this.applyVolumeScaleMargins();
+  }
+
+  configureVolumeIndicatorDescriptor() {
+    if (!window.OpenAlgoCharts || typeof window.OpenAlgoCharts.registeredIndicators !== 'function') return;
+    try {
+      const registered = window.OpenAlgoCharts.registeredIndicators();
+      const volDesc = registered.find(i => i.id === 'volume');
+      if (volDesc) {
+        volDesc.placement = 'onchart';
+        if (Array.isArray(volDesc.plots) && volDesc.plots[0]) {
+          volDesc.plots[0].priceScaleId = 'overlay:volume';
+          volDesc.plots[0].overlay = true;
+        }
+        const colByDir = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'colorByDirection') : null;
+        if (colByDir) colByDir.default = true;
+        const showMA = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'showMA') : null;
+        if (showMA) showMA.default = false;
+        const upColor = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'upColor') : null;
+        if (upColor) upColor.default = 'rgba(8, 153, 129, 0.45)';
+        const downColor = Array.isArray(volDesc.inputs) ? volDesc.inputs.find(i => i.key === 'downColor') : null;
+        if (downColor) downColor.default = 'rgba(242, 54, 69, 0.45)';
+      }
+    } catch (e) {
+      console.warn('[ChartController] Failed to configure volume descriptor:', e);
+    }
+  }
+
+  getOnChartVolumeIndicator() {
+    if (!this.chart || typeof this.chart.indicators !== 'function') return null;
+    const inds = this.chart.indicators();
+    return inds.find(i => i.id === 'volume' || (typeof i.id === 'string' && i.id.startsWith('volume-'))) || null;
+  }
+
+  isOnChartVolumeEnabled() {
+    return !!this.getOnChartVolumeIndicator();
+  }
+
+  applyVolumeScaleMargins(ind) {
+    const handle = ind || this.getOnChartVolumeIndicator();
+    if (!handle || !handle._series) return;
+    const volSeries = handle._series.get('volume');
+    if (volSeries && typeof volSeries.priceScale === 'function') {
+      const ps = volSeries.priceScale();
+      if (ps && typeof ps.setOptions === 'function') {
+        ps.setOptions({
+          marginTop: 0.8,
+          marginBottom: 0
+        });
+      }
+    }
+  }
+
+  enableOnChartVolume() {
+    if (!this.chart || typeof this.chart.addIndicator !== 'function') return null;
+    this.configureVolumeIndicatorDescriptor();
+
+    const existing = this.getOnChartVolumeIndicator();
+    if (existing) {
+      this.applyVolumeScaleMargins(existing);
+      return existing;
+    }
+
+    try {
+      const ind = this.chart.addIndicator('volume');
+      setTimeout(() => {
+        this.applyVolumeScaleMargins(ind);
+        if (typeof this.chart.invalidate === 'function') {
+          this.chart.invalidate(e => e.invalidateGlobal(3));
+        }
+      }, 50);
+
+      this.store.set('showVolumeOnChart', true);
+      localStorage.setItem('trading_simulator_show_volume', 'true');
+      eventBus.emit('volume:toggle', true);
+      this.syncIndicatorLegendOffset();
+      return ind;
+    } catch (err) {
+      console.warn('[ChartController] Failed to add on-chart volume indicator:', err);
+      return null;
+    }
+  }
+
+  disableOnChartVolume() {
+    if (!this.chart) return;
+    const existing = this.getOnChartVolumeIndicator();
+    if (existing) {
+      try {
+        if (typeof existing.remove === 'function') {
+          existing.remove();
+        } else if (typeof this.chart.removeIndicator === 'function') {
+          this.chart.removeIndicator(existing.id || existing);
+        }
+      } catch (err) {
+        console.warn('[ChartController] Failed to remove volume indicator:', err);
+      }
+    }
+    this.store.set('showVolumeOnChart', false);
+    localStorage.setItem('trading_simulator_show_volume', 'false');
+    eventBus.emit('volume:toggle', false);
+    this.syncIndicatorLegendOffset();
+  }
+
+  toggleOnChartVolume(forceState) {
+    const next = forceState !== undefined ? !!forceState : !this.isOnChartVolumeEnabled();
+    if (next) {
+      this.enableOnChartVolume();
+    } else {
+      this.disableOnChartVolume();
+    }
+    return next;
   }
 
   /**

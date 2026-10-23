@@ -159,12 +159,16 @@ export class ModalsComponent {
   renderIndicatorList(list) {
     if (!this.indicatorListContainer) return;
     this.indicatorListContainer.innerHTML = list.map(ind => {
-      const isActive = this.activeIndicators.has(ind.id);
+      const isVol = ind.id === 'volume';
+      const isActive = isVol
+        ? (this.store.chartController ? this.store.chartController.isOnChartVolumeEnabled() : this.activeIndicators.has(ind.id))
+        : this.activeIndicators.has(ind.id);
+      const placementDesc = isVol ? 'основной график, внизу' : (ind.placement === 'pane' ? 'отдельное окно' : 'поверх цены');
       return `
         <div class="indicator-item ${isActive ? 'active' : ''}" data-ind-id="${ind.id}">
           <div class="indicator-info">
             <span class="indicator-name">${ind.name || ind.id.toUpperCase()}</span>
-            <span class="indicator-desc">${ind.category || 'Технический анализ'} (${ind.placement === 'pane' ? 'отдельное окно' : 'поверх цены'})</span>
+            <span class="indicator-desc">${ind.category || 'Технический анализ'} (${placementDesc})</span>
           </div>
           <input type="checkbox" class="indicator-toggle" ${isActive ? 'checked' : ''}>
         </div>
@@ -185,8 +189,14 @@ export class ModalsComponent {
 
         if (checkbox.checked) {
           try {
-            const handle = chart.addIndicator(id);
-            this.activeIndicators.set(id, handle);
+            let handle = null;
+            if (id === 'volume' && this.store.chartController) {
+              handle = this.store.chartController.enableOnChartVolume();
+              this.activeIndicators.set(id, handle);
+            } else {
+              handle = chart.addIndicator(id);
+              this.activeIndicators.set(id, handle);
+            }
             item.classList.add('active');
             if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
               this.store.chartController.syncIndicatorLegendOffset();
@@ -199,16 +209,25 @@ export class ModalsComponent {
           }
         } else {
           try {
-            const handle = this.activeIndicators.get(id);
-            if (handle) {
-              chart.removeIndicator(handle);
+            if (id === 'volume' && this.store.chartController) {
+              this.store.chartController.disableOnChartVolume();
               this.activeIndicators.delete(id);
-              item.classList.remove('active');
-              if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
-                this.store.chartController.syncIndicatorLegendOffset();
+            } else {
+              const handle = this.activeIndicators.get(id);
+              if (handle) {
+                if (typeof handle.remove === 'function') {
+                  handle.remove();
+                } else {
+                  chart.removeIndicator(handle.id || handle);
+                }
+                this.activeIndicators.delete(id);
               }
-              showToast(`Индикатор ${id.toUpperCase()} удален`, 'info');
             }
+            item.classList.remove('active');
+            if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
+              this.store.chartController.syncIndicatorLegendOffset();
+            }
+            showToast(`Индикатор ${id.toUpperCase()} удален`, 'info');
           } catch (err) {
             console.error('Error removing indicator:', err);
           }

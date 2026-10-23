@@ -142,6 +142,9 @@ export class ChartStyleModalComponent {
     this.currentWorkingShowExecutions = true;
     this.backupShowExecutions = true;
 
+    this.currentWorkingShowVolume = false;
+    this.backupShowVolume = false;
+
     this.currentWorkingSessionBreaks = {
       enabled: true,
       color: 'rgba(255, 255, 255, 0.2)',
@@ -262,6 +265,10 @@ export class ChartStyleModalComponent {
     this.backupShowExecutions = showExecs;
     this.currentWorkingShowExecutions = showExecs;
 
+    const showVol = this.store.chartController ? this.store.chartController.isOnChartVolumeEnabled() : false;
+    this.backupShowVolume = showVol;
+    this.currentWorkingShowVolume = showVol;
+
     const sessionBreaksConfig = this.store.get('sessionBreaksConfig') || {
       enabled: this.store.get('showSessionBreaks') !== false,
       color: 'rgba(255, 255, 255, 0.2)',
@@ -300,6 +307,12 @@ export class ChartStyleModalComponent {
       eventBus.emit('executions:toggle', this.backupShowExecutions);
     }
 
+    // Revert volume toggle
+    if (this.backupShowVolume !== undefined && this.store.chartController) {
+      this.currentWorkingShowVolume = this.backupShowVolume;
+      this.store.chartController.toggleOnChartVolume(this.backupShowVolume);
+    }
+
     // Revert session breaks
     if (this.backupSessionBreaks) {
       this.store.set('sessionBreaksConfig', { ...this.backupSessionBreaks });
@@ -320,6 +333,10 @@ export class ChartStyleModalComponent {
     if (this.currentWorkingShowExecutions !== undefined) {
       this.store.set('showExecutionsOnChart', this.currentWorkingShowExecutions);
       eventBus.emit('executions:toggle', this.currentWorkingShowExecutions);
+    }
+
+    if (this.currentWorkingShowVolume !== undefined && this.store.chartController) {
+      this.store.chartController.toggleOnChartVolume(this.currentWorkingShowVolume);
     }
 
     if (this.currentWorkingSessionBreaks) {
@@ -347,6 +364,8 @@ export class ChartStyleModalComponent {
     } else if (this.activeTab === 'chart') {
       this.currentWorkingShowExecutions = true;
       this.applyExecutionsLivePreview();
+      this.currentWorkingShowVolume = false;
+      this.applyVolumeLivePreview();
       this.renderChartForm();
       showToast('Настройки графика сброшены по умолчанию', 'info');
     } else if (this.activeTab === 'appearance') {
@@ -365,6 +384,16 @@ export class ChartStyleModalComponent {
   applyExecutionsLivePreview() {
     this.store.set('showExecutionsOnChart', this.currentWorkingShowExecutions);
     eventBus.emit('executions:toggle', this.currentWorkingShowExecutions);
+  }
+
+  applyVolumeLivePreview() {
+    if (this.store.chartController) {
+      if (this.currentWorkingShowVolume) {
+        this.store.chartController.enableOnChartVolume();
+      } else {
+        this.store.chartController.disableOnChartVolume();
+      }
+    }
   }
 
   renderChartForm() {
@@ -387,6 +416,24 @@ export class ChartStyleModalComponent {
     });
 
     this.chartModalBody.appendChild(row);
+
+    const volSectionTitle = document.createElement('div');
+    volSectionTitle.className = 'tv-settings-section-title';
+    volSectionTitle.style.marginTop = '18px';
+    volSectionTitle.textContent = 'Индикаторы графика';
+    this.chartModalBody.appendChild(volSectionTitle);
+
+    const rowVol = this.createSettingRow({
+      label: 'Показать объем на графике',
+      hasCheckbox: true,
+      checked: !!this.currentWorkingShowVolume,
+      onCheck: (val) => {
+        this.currentWorkingShowVolume = val;
+        this.applyVolumeLivePreview();
+      }
+    });
+
+    this.chartModalBody.appendChild(rowVol);
   }
 
   applyLivePreview() {
