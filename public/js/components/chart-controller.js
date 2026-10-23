@@ -141,6 +141,17 @@ export class ChartControllerComponent {
         });
         this.store.drawingController = this.drawingController;
 
+        // Suppress redundant point creation on mouse release (drag release) for multi-point path/polyline tools (TradingView style)
+        const origOnClick = this.drawingController._onClick;
+        if (typeof origOnClick === 'function') {
+          this.drawingController._onClick = function(t) {
+            if (t && t.viaDrag && (this._tool === 'path' || this._tool === 'polyline')) {
+              return;
+            }
+            return origOnClick.call(this, t);
+          };
+        }
+
         // Auto-save drawings on any change
         ['drawing:change', 'draw:add', 'draw:update', 'draw:remove'].forEach(evt => {
           if (typeof this.drawingController.on === 'function') {
