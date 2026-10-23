@@ -83,13 +83,16 @@ export class DrawingRailComponent {
     if (dc.__finishHooked) return;
     dc.__finishHooked = true;
 
-    // Suppress redundant point creation on mouse release (drag release) for multi-point path/polyline tools (TradingView style)
+    // Points for path & polyline are placed instantly on pointerdown (TradingView style);
+    // ignore subsequent clicks originating from pointerup/drag-release
     if (!dc.__onClickHooked && typeof dc._onClick === 'function') {
       dc.__onClickHooked = true;
       const origOnClick = dc._onClick;
       dc._onClick = function(t) {
-        if (t && t.viaDrag && (this._tool === 'path' || this._tool === 'polyline')) {
-          return;
+        if (this._tool === 'path' || this._tool === 'polyline') {
+          if (!t || !t.fromPointerDown) {
+            return;
+          }
         }
         return origOnClick.call(this, t);
       };

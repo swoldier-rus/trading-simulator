@@ -101,6 +101,33 @@ export class ChartControllerComponent {
 
       this.store.chart = this.chart;
 
+      // Instant point placement on pointerdown for multi-point path & polyline tools (TradingView style)
+      if (this.chart._input && typeof this.chart._input._onPointerDown === 'function') {
+        const origOnPointerDown = this.chart._input._onPointerDown;
+        const self = this;
+        this.chart._input._onPointerDown = function(e) {
+          origOnPointerDown.call(this, e);
+          const dc = self.drawingController || self.store.drawingController;
+          if (dc && (dc.activeTool() === 'path' || dc.activeTool() === 'polyline') && ("mouse" !== e.pointerType && "pen" !== e.pointerType || 0 === e.button)) {
+            const t = typeof this._localPoint === 'function' ? this._localPoint(e) : null;
+            if (t && Number.isFinite(t.x) && Number.isFinite(t.localY)) {
+              const price = typeof this._priceAt === 'function' ? this._priceAt(t.pane, t.localY) : null;
+              const time = typeof this._host?._xToTime === 'function' ? this._host._xToTime(t.x) : null;
+              if (Number.isFinite(price) && Number.isFinite(time)) {
+                this._host._emit("click", {
+                  id: null,
+                  price,
+                  time,
+                  paneIndex: t.pane,
+                  point: { x: t.x, y: t.localY },
+                  fromPointerDown: true
+                });
+              }
+            }
+          }
+        };
+      }
+
       // Add primary candlestick series
       this.mainSeries = this.chart.addSeries('candlestick', {
         upColor: '#089981',
@@ -141,12 +168,15 @@ export class ChartControllerComponent {
         });
         this.store.drawingController = this.drawingController;
 
-        // Suppress redundant point creation on mouse release (drag release) for multi-point path/polyline tools (TradingView style)
+        // Points for path & polyline are placed instantly on pointerdown (TradingView style);
+        // ignore subsequent clicks originating from pointerup/drag-release
         const origOnClick = this.drawingController._onClick;
         if (typeof origOnClick === 'function') {
           this.drawingController._onClick = function(t) {
-            if (t && t.viaDrag && (this._tool === 'path' || this._tool === 'polyline')) {
-              return;
+            if (this._tool === 'path' || this._tool === 'polyline') {
+              if (!t || !t.fromPointerDown) {
+                return;
+              }
             }
             return origOnClick.call(this, t);
           };
