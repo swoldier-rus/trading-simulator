@@ -183,6 +183,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const toSec = fromSec + (batchCount - 1) * step;
 
     isPrefetchingFuture = true;
+    setChartLoadingState(true, { fullReset: false });
+
     prefetchPromise = (async () => {
       try {
         const data = await marketDataService.getCandles(
@@ -209,6 +211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } finally {
         isPrefetchingFuture = false;
         prefetchPromise = null;
+        setChartLoadingState(false);
       }
     })();
 
@@ -230,55 +233,114 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // 6. Candle Pipeline Loader & Symbol Loading State Controller
-  function setSymbolLoadingState(isLoading) {
-    store.set('isSymbolLoading', !!isLoading);
+  // 6. Candle Pipeline Loader & Unified Chart Loading State Controller
+  let activeLoadingCount = 0;
+  let hasFullResetInFlight = false;
+  let loaderShownTimestamp = 0;
+  let hideLoaderTimeout = null;
+  const MIN_LOADER_DURATION = 200; // Hold at least 200ms to guarantee smooth animation without micro-jitter
 
-    if (isLoading && store.chartOrderMenu && typeof store.chartOrderMenu.close === 'function') {
-      store.chartOrderMenu.close();
-      if (typeof store.chartOrderMenu.closeTimeScaleContextMenu === 'function') {
-        store.chartOrderMenu.closeTimeScaleContextMenu();
-      }
-      if (typeof store.chartOrderMenu.closePriceScaleContextMenu === 'function') {
-        store.chartOrderMenu.closePriceScaleContextMenu();
-      }
-    }
-
-    const loader = document.getElementById('chartDataLoader');
-    if (loader) {
-      loader.style.display = isLoading ? 'inline-flex' : 'none';
-    }
+  function setChartLoadingState(isLoading, options = {}) {
+    const fullReset = options.fullReset === true;
 
     if (isLoading) {
-      const valOpen = document.getElementById('valOpen');
-      const valHigh = document.getElementById('valHigh');
-      const valLow = document.getElementById('valLow');
-      const valClose = document.getElementById('valClose');
-      const valChange = document.getElementById('valChange');
-      const valVolume = document.getElementById('valVolume');
-      if (valOpen) valOpen.textContent = '—';
-      if (valHigh) valHigh.textContent = '—';
-      if (valLow) valLow.textContent = '—';
-      if (valClose) valClose.textContent = '—';
-      if (valChange) {
-        valChange.textContent = '—';
-        valChange.className = '';
+      activeLoadingCount++;
+      if (fullReset) {
+        hasFullResetInFlight = true;
       }
-      if (valVolume) valVolume.textContent = '—';
-    }
 
-    if (orderPanel && typeof orderPanel.setLoading === 'function') {
-      orderPanel.setLoading(!!isLoading);
-    }
+      if (hideLoaderTimeout) {
+        clearTimeout(hideLoaderTimeout);
+        hideLoaderTimeout = null;
+      }
 
-    if (store.quickTradeWidget && typeof store.quickTradeWidget.setLoading === 'function') {
-      store.quickTradeWidget.setLoading(!!isLoading);
+      if (hasFullResetInFlight) {
+        store.set('isSymbolLoading', true);
+
+        if (store.chartOrderMenu && typeof store.chartOrderMenu.close === 'function') {
+          store.chartOrderMenu.close();
+          if (typeof store.chartOrderMenu.closeTimeScaleContextMenu === 'function') {
+            store.chartOrderMenu.closeTimeScaleContextMenu();
+          }
+          if (typeof store.chartOrderMenu.closePriceScaleContextMenu === 'function') {
+            store.chartOrderMenu.closePriceScaleContextMenu();
+          }
+        }
+
+        const valOpen = document.getElementById('valOpen');
+        const valHigh = document.getElementById('valHigh');
+        const valLow = document.getElementById('valLow');
+        const valClose = document.getElementById('valClose');
+        const valChange = document.getElementById('valChange');
+        const valVolume = document.getElementById('valVolume');
+        if (valOpen) valOpen.textContent = '—';
+        if (valHigh) valHigh.textContent = '—';
+        if (valLow) valLow.textContent = '—';
+        if (valClose) valClose.textContent = '—';
+        if (valChange) {
+          valChange.textContent = '—';
+          valChange.className = '';
+        }
+        if (valVolume) valVolume.textContent = '—';
+
+        if (orderPanel && typeof orderPanel.setLoading === 'function') {
+          orderPanel.setLoading(true);
+        }
+        if (store.quickTradeWidget && typeof store.quickTradeWidget.setLoading === 'function') {
+          store.quickTradeWidget.setLoading(true);
+        }
+      }
+
+      const loader = document.getElementById('chartDataLoader');
+      if (loader && loader.style.display !== 'inline-flex') {
+        loader.style.display = 'inline-flex';
+        loaderShownTimestamp = Date.now();
+      }
+    } else {
+      activeLoadingCount = Math.max(0, activeLoadingCount - 1);
+      if (activeLoadingCount === 0) {
+        const elapsed = Date.now() - loaderShownTimestamp;
+        const remaining = Math.max(0, MIN_LOADER_DURATION - elapsed);
+
+        if (hideLoaderTimeout) clearTimeout(hideLoaderTimeout);
+        hideLoaderTimeout = setTimeout(() => {
+          hideLoaderTimeout = null;
+          hasFullResetInFlight = false;
+          store.set('isSymbolLoading', false);
+
+          const loader = document.getElementById('chartDataLoader');
+          if (loader) {
+            loader.style.display = 'none';
+          }
+
+          if (orderPanel && typeof orderPanel.setLoading === 'function') {
+            orderPanel.setLoading(false);
+          }
+          if (store.quickTradeWidget && typeof store.quickTradeWidget.setLoading === 'function') {
+            store.quickTradeWidget.setLoading(false);
+          }
+        }, remaining);
+      }
     }
   }
 
-  async function loadCandles(targetBarTime = null, preserveReplay = false, isSymbolChange = false) {
-    if (isSymbolChange) {
-      setSymbolLoadingState(true);
+  function setSymbolLoadingState(isLoading) {
+    setChartLoadingState(isLoading, { fullReset: true });
+  }
+
+  // React to global loading requests from services and controllers
+  eventBus.on('chart:loading', (isLoading, options) => {
+    setChartLoadingState(isLoading, options);
+  });
+
+  async function loadCandles(targetBarTime = null, preserveReplay = false, options = {}) {
+    const isOptionsObject = typeof options === 'object' && options !== null;
+    const isSymbolChange = isOptionsObject ? !!options.isSymbolChange : !!options;
+    const showLoading = isOptionsObject ? (options.showLoading !== false) : !!options;
+    const fullReset = isOptionsObject ? (options.fullReset !== false) : !!options;
+
+    if (showLoading) {
+      setChartLoadingState(true, { fullReset });
     }
 
     const currentSymbol = store.get('currentSymbol');
@@ -372,8 +434,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('Error in loadCandles:', err);
       showToast('Ошибка загрузки данных котировок', 'error');
     } finally {
-      if (isSymbolChange) {
-        setSymbolLoadingState(false);
+      if (showLoading) {
+        setChartLoadingState(false);
       }
     }
   }
@@ -389,14 +451,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isHistorical = barInfo.isReplay || barInfo.isScrolled || (targetSec && (nowSec - targetSec > 86400 * 2));
 
     if (isHistorical && targetSec) {
-      await loadCandles(targetSec, barInfo.isReplay, false);
+      await loadCandles(targetSec, barInfo.isReplay, { showLoading: true, fullReset: true });
     } else {
-      await loadCandles(null, false, false);
+      await loadCandles(null, false, { showLoading: true, fullReset: true });
     }
   });
 
   eventBus.on('symbol:change', async ({ prevSymbol, ticker } = {}) => {
-    setSymbolLoadingState(true);
+    setChartLoadingState(true, { fullReset: true });
     try {
       if (prevSymbol && simulator && simulator.allCandles && simulator.allCandles.length > 0) {
         portfolioDataService.candlesBySymbol.set(prevSymbol, simulator.allCandles);
@@ -414,14 +476,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (simTime) {
         // Replay is active: preserve exact simulation time across ticker switch!
-        await loadCandles(simTime, true, true);
+        await loadCandles(simTime, true, { showLoading: true, fullReset: true, isSymbolChange: true });
         eventBus.emit('replay:scrubbed');
       } else {
         // Replay was inactive: load candles up to latest
-        await loadCandles(null, false, true);
+        await loadCandles(null, false, { showLoading: true, fullReset: true, isSymbolChange: true });
       }
     } finally {
-      setSymbolLoadingState(false);
+      setChartLoadingState(false);
     }
   });
 

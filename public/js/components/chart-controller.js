@@ -260,6 +260,7 @@ export class ChartControllerComponent {
 
       // Infinite History Loader
       this.chart.setHistoryLoader(async () => {
+        eventBus.emit('chart:loading', true, { fullReset: false });
         try {
           const sim = this.store.simulator;
           const oldest = sim && sim.allCandles ? sim.allCandles[0]?.time : null;
@@ -287,6 +288,7 @@ export class ChartControllerComponent {
           console.error('History loader error:', err);
         } finally {
           this.chart.historyLoadComplete();
+          eventBus.emit('chart:loading', false);
         }
       });
 

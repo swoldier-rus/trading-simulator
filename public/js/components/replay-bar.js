@@ -378,6 +378,7 @@ export class ReplayBarComponent {
     const tf = this.store.get('currentTimeframe');
 
     showToast('Загрузка с первой доступной даты истории актива...', 'info');
+    eventBus.emit('chart:loading', true, { fullReset: true });
 
     try {
       // Force fresh boundaries lookup from T-Investments API
@@ -424,6 +425,8 @@ export class ReplayBarComponent {
     } catch (err) {
       console.error('Error starting from first date:', err);
       showToast('Ошибка загрузки истории из T-Invest API', 'error');
+    } finally {
+      eventBus.emit('chart:loading', false);
     }
   }
 
@@ -439,6 +442,7 @@ export class ReplayBarComponent {
     const step = timeframeToSeconds(tf);
 
     showToast('Поиск случайного момента за всю историю актива...', 'info');
+    eventBus.emit('chart:loading', true, { fullReset: true });
 
     try {
       // Force fresh boundaries lookup from T-Investments API
@@ -482,6 +486,8 @@ export class ReplayBarComponent {
     } catch (err) {
       console.error('Error selecting random historical bar:', err);
       showToast('Ошибка загрузки истории из T-Invest API', 'error');
+    } finally {
+      eventBus.emit('chart:loading', false);
     }
   }
 
@@ -524,6 +530,7 @@ export class ReplayBarComponent {
     }
 
     showToast(`Загрузка котировок за ${formatTimestamp(targetSec)}...`, 'info');
+    eventBus.emit('chart:loading', true, { fullReset: true });
 
     const tf = this.store.get('currentTimeframe');
     const step = timeframeToSeconds(tf);
@@ -557,6 +564,8 @@ export class ReplayBarComponent {
     } catch (err) {
       console.error('Error fetching date candles:', err);
       showToast('Ошибка загрузки данных за указанную дату', 'error');
+    } finally {
+      eventBus.emit('chart:loading', false);
     }
   }
 

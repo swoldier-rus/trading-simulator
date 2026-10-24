@@ -1,6 +1,7 @@
 // services/market-data.service.js - Unified Market Data Service with IndexedDB caching
 import { API } from '../api.js';
 import { cacheService } from './cache.service.js';
+import { eventBus } from '../core/event-bus.js';
 
 class MarketDataService {
   constructor() {
@@ -73,6 +74,9 @@ class MarketDataService {
     }
 
     const fetchPromise = (async () => {
+      if (!options.silent) {
+        eventBus.emit('chart:loading', true, { fullReset: false });
+      }
       try {
         const data = await API.getCandles(ticker, figi, timeframe, count, to, from, lastClose);
 
@@ -86,6 +90,9 @@ class MarketDataService {
 
         return data;
       } finally {
+        if (!options.silent) {
+          eventBus.emit('chart:loading', false);
+        }
         this.inFlightRequests.delete(requestKey);
       }
     })();
