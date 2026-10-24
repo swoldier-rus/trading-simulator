@@ -1,7 +1,9 @@
 // services/session.service.js - Unified Simulation & Trading Session Persistence Service
 import { eventBus } from '../core/event-bus.js';
+import { cacheService } from './cache.service.js';
 
 const STORAGE_KEY = 'trading_simulator_session_v1';
+const ACTIVE_SESSION_ID = 'active_session';
 
 class SessionPersistenceService {
   constructor(store) {
@@ -108,7 +110,8 @@ class SessionPersistenceService {
     };
 
     return {
-      version: 1,
+      id: ACTIVE_SESSION_ID,
+      version: 2,
       savedAt: Date.now(),
       symbol,
       timeframe,
@@ -134,23 +137,68 @@ class SessionPersistenceService {
     if (this.isRestoring) return;
     try {
       const snapshot = this.buildSnapshot();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      this._lastSnapshot = snapshot;
+
+      // 1. Asynchronously persist full snapshot to IndexedDB (virtually unlimited capacity)
+      cacheService.saveSession(snapshot).catch(err => {
+        console.warn('[SessionService] Failed to persist session to IndexedDB:', err);
+      });
+
+      // 2. Synchronous lightweight copy in localStorage (for beforeunload protection)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      } catch (lsErr) {
+        // If localStorage 5MB quota is exceeded due to heavy drawings or trade history,
+        // safely fall back to metadata without heavy drawings
+        console.warn('[SessionService] localStorage quota exceeded, saving lightweight metadata fallback:', lsErr);
+        try {
+          const lightweight = {
+            ...snapshot,
+            chart: {
+              ...snapshot.chart,
+              drawingsBySymbol: {}
+            }
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
+        } catch (e) {
+          // IndexedDB already has the full snapshot
+        }
+      }
     } catch (e) {
       console.warn('[SessionService] Failed to save session:', e);
     }
   }
 
-  getSavedSession() {
+  async getSavedSession() {
+    try {
+      // 1. Check IndexedDB first (primary persistent storage)
+      const idbSession = await cacheService.getSession(ACTIVE_SESSION_ID);
+      if (idbSession && (idbSession.version === 1 || idbSession.version === 2)) {
+        this._lastSnapshot = idbSession;
+        return idbSession;
+      }
+    } catch (idbErr) {
+      console.warn('[SessionService] Error loading from IndexedDB, falling back to localStorage:', idbErr);
+    }
+
+    // 2. Fallback to localStorage and automatically migrate to IndexedDB
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.version === 1) {
-        return parsed;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (parsed.version === 1 || parsed.version === 2)) {
+          // Migrate to IndexedDB in background
+          cacheService.saveSession({ ...parsed, id: ACTIVE_SESSION_ID, version: 2 }).catch(e => {
+            console.warn('[SessionService] Background migration to IndexedDB failed:', e);
+          });
+          this._lastSnapshot = parsed;
+          return parsed;
+        }
       }
     } catch (e) {
-      console.warn('[SessionService] Failed to load session:', e);
+      console.warn('[SessionService] Failed to load session from localStorage:', e);
     }
+
     return null;
   }
 
@@ -213,7 +261,8 @@ class SessionPersistenceService {
 
       // 5. Drawings restoration (per-symbol and backward compatible)
       this.drawingsBySymbol = saved.chart?.drawingsBySymbol || {};
-      const activeDrawings = this.drawingsBySymbol[symbol] || saved.chart?.drawings;
+      const currentSym = saved.symbol || this.store.get('currentSymbol') || 'SBER';
+      const activeDrawings = this.drawingsBySymbol[currentSym] || saved.chart?.drawings;
       if (activeDrawings && this.store.drawingController && typeof this.store.drawingController.fromJSON === 'function') {
         try {
           this.store.drawingController.fromJSON(activeDrawings);
@@ -334,9 +383,64 @@ class SessionPersistenceService {
     this.scheduleSave();
   }
 
+  // Save current simulation as a named session slot in IndexedDB
+  async saveNamedSession(name) {
+    const snapshot = this.buildSnapshot();
+    const sessionId = `session_${Date.now()}`;
+    const pnl = this.store.paperAccount ? this.store.paperAccount.realizedPnL : 0;
+    const tradesCount = this.store.paperAccount ? (this.store.paperAccount.tradeHistory?.length || 0) : 0;
+    
+    const namedSession = {
+      ...snapshot,
+      id: sessionId,
+      name: name || `Сессия ${new Date().toLocaleDateString('ru-RU')} ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+      tradesCount,
+      realizedPnL: pnl
+    };
+
+    await cacheService.saveSession(namedSession);
+    eventBus.emit('session:saved', namedSession);
+    return namedSession;
+  }
+
+  // Get list of all saved sessions from IndexedDB
+  async listSavedSessions() {
+    return await cacheService.listSessions();
+  }
+
+  // Load and activate a named session from IndexedDB
+  async loadNamedSession(sessionId) {
+    const session = await cacheService.getSession(sessionId);
+    if (!session) return false;
+
+    // Overwrite active_session with selected session data
+    await cacheService.saveSession({ ...session, id: ACTIVE_SESSION_ID });
+
+    // Restore full state into current application
+    await this.restoreSession(session);
+
+    // If Replay was saved at a specific bar, jump to it
+    if (session.replay?.currentBarTime && this.store.simulator) {
+      this.store.simulator.jumpToBar(session.replay.currentBarTime);
+    }
+
+    eventBus.emit('session:loaded', session);
+    return true;
+  }
+
+  // Delete a saved session from IndexedDB
+  async deleteNamedSession(sessionId) {
+    if (sessionId === ACTIVE_SESSION_ID) return false;
+    const res = await cacheService.deleteSession(sessionId);
+    eventBus.emit('session:deleted', { sessionId });
+    return res;
+  }
+
+  // Clear current active session from both IndexedDB and localStorage
   clearSession() {
     try {
       localStorage.removeItem(STORAGE_KEY);
+      cacheService.deleteSession(ACTIVE_SESSION_ID).catch(() => {});
     } catch (e) {
       console.warn('[SessionService] Failed to clear session:', e);
     }

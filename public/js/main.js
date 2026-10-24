@@ -8,6 +8,7 @@ import { MarketSimulator } from './simulator.js';
 import { IndicatorManager } from './indicators.js';
 import { showToast, timeframeToSeconds } from './core/utils.js';
 import { SessionPersistenceService } from './services/session.service.js';
+import { cacheService } from './services/cache.service.js';
 import { PortfolioMarketDataService } from './services/portfolio-data.service.js';
 
 // Components
@@ -488,6 +489,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     simulator,
     paperAccount,
     portfolioDataService,
+    sessionService,
+    cacheService,
     store,
     eventBus,
     components: {
@@ -513,8 +516,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setSymbolLoadingState
   };
 
-  // 9. Startup Initial Data Load & Session Restoration
-  const savedSession = sessionService.getSavedSession();
+  // 9. Startup Initial Data Load & Session Restoration (IndexedDB with localStorage fallback)
+  const savedSession = await sessionService.getSavedSession();
   let targetBarTime = null;
   let preserveReplay = true; // Primary mode: Replay is active by default
 

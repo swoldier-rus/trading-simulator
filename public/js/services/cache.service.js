@@ -2,9 +2,10 @@
 // Provides instantaneous offline/cached historical data loading and protects T-Bank API rate limits.
 
 const DB_NAME = 'TradingSimulatorDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_CANDLES = 'candles';
 const STORE_META = 'series_meta';
+const STORE_SESSIONS = 'sessions';
 
 class CacheService {
   constructor() {
@@ -35,6 +36,13 @@ class CacheService {
           // 2. Metadata store: keyed by "seriesKey" ("${ticker}_${tf}")
           if (!db.objectStoreNames.contains(STORE_META)) {
             db.createObjectStore(STORE_META, { keyPath: 'seriesKey' });
+          }
+
+          // 3. Sessions store: keyed by "id" (active_session or named saved sessions)
+          if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
+            const sessionStore = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
+            sessionStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+            sessionStore.createIndex('symbol', 'symbol', { unique: false });
           }
         };
 
@@ -248,6 +256,134 @@ class CacheService {
       };
       req.onerror = () => resolve();
     });
+  }
+
+  // Save a simulation / trading session
+  async saveSession(sessionData) {
+    if (!this.isSupported || !sessionData) return null;
+    const db = await this.initDB();
+    if (!db) return null;
+
+    const data = {
+      ...sessionData,
+      id: sessionData.id || 'active_session',
+      updatedAt: Date.now()
+    };
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction([STORE_SESSIONS], 'readwrite');
+        const store = tx.objectStore(STORE_SESSIONS);
+        store.put(data);
+
+        tx.oncomplete = () => resolve(data.id);
+        tx.onerror = (err) => {
+          console.warn('[CacheService] Error saving session to IndexedDB:', err);
+          resolve(null);
+        };
+      } catch (err) {
+        console.warn('[CacheService] Exception saving session to IndexedDB:', err);
+        resolve(null);
+      }
+    });
+  }
+
+  // Get a simulation session by ID (default: 'active_session')
+  async getSession(sessionId = 'active_session') {
+    if (!this.isSupported) return null;
+    const db = await this.initDB();
+    if (!db) return null;
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction([STORE_SESSIONS], 'readonly');
+        const store = tx.objectStore(STORE_SESSIONS);
+        const req = store.get(sessionId);
+
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      } catch (err) {
+        console.warn('[CacheService] Error reading session from IndexedDB:', err);
+        resolve(null);
+      }
+    });
+  }
+
+  // List all saved sessions (ordered by most recent)
+  async listSessions() {
+    if (!this.isSupported) return [];
+    const db = await this.initDB();
+    if (!db) return [];
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction([STORE_SESSIONS], 'readonly');
+        const store = tx.objectStore(STORE_SESSIONS);
+        const req = store.getAll();
+
+        req.onsuccess = () => {
+          const list = req.result || [];
+          const summaries = list.map(s => ({
+            id: s.id,
+            name: s.name || (s.id === 'active_session' ? 'Текущая сессия' : 'Сохраненная сессия'),
+            symbol: s.symbol,
+            timeframe: s.timeframe,
+            chartType: s.chartType,
+            updatedAt: s.updatedAt || s.savedAt,
+            currentBarTime: s.replay?.currentBarTime,
+            tradesCount: s.account?.tradeHistory?.length || s.tradesCount || 0,
+            realizedPnL: s.account?.realizedPnL || s.realizedPnL || 0,
+            initialDeposit: s.account?.initialDeposit || 100000,
+            balance: s.account?.balance || 100000
+          }));
+          summaries.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          resolve(summaries);
+        };
+
+        req.onerror = () => resolve([]);
+      } catch (err) {
+        resolve([]);
+      }
+    });
+  }
+
+  // Delete a saved session by ID
+  async deleteSession(sessionId) {
+    if (!this.isSupported || !sessionId) return false;
+    const db = await this.initDB();
+    if (!db) return false;
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction([STORE_SESSIONS], 'readwrite');
+        const store = tx.objectStore(STORE_SESSIONS);
+        store.delete(sessionId);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (err) {
+        resolve(false);
+      }
+    });
+  }
+
+  // Get storage estimate (usage and quota)
+  async getStorageEstimate() {
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+      try {
+        const est = await navigator.storage.estimate();
+        return {
+          usageBytes: est.usage || 0,
+          quotaBytes: est.quota || 0,
+          usageMB: ((est.usage || 0) / (1024 * 1024)).toFixed(2),
+          quotaMB: ((est.quota || 0) / (1024 * 1024)).toFixed(2),
+          usagePercent: est.quota ? (((est.usage || 0) / est.quota) * 100).toFixed(2) : 0,
+          isSupported: true
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }
 }
 
