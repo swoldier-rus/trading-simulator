@@ -2,7 +2,7 @@
 import { eventBus } from '../core/event-bus.js';
 import { API } from '../api.js';
 import { marketDataService } from '../services/market-data.service.js';
-import { showToast, formatTimestamp } from '../core/utils.js';
+import { showToast, formatTimestamp, binarySearchCandleExact } from '../core/utils.js';
 
 export const DEFAULT_VOLUME_COLORS = {
   upColor: 'rgba(8, 153, 129, 0.45)',
@@ -204,7 +204,7 @@ export class ChartControllerComponent {
         } else {
           const sim = this.store.simulator;
           if (sim && sim.allCandles) {
-            const bar = sim.allCandles.find(c => c.time === param.time);
+            const bar = binarySearchCandleExact(sim.allCandles, param.time);
             if (bar) {
               this.updateLegend(bar);
             }
@@ -879,6 +879,15 @@ export class ChartControllerComponent {
 
   updateLegend(bar) {
     if (!bar) return;
+    if (this._lastLegendBar === bar &&
+        this._lastLegendClose === bar.close &&
+        this._lastLegendVol === bar.volume) {
+      return;
+    }
+    this._lastLegendBar = bar;
+    this._lastLegendClose = bar.close;
+    this._lastLegendVol = bar.volume;
+
     if (this.valOpen) this.valOpen.textContent = bar.open.toFixed(2);
     if (this.valHigh) this.valHigh.textContent = bar.high.toFixed(2);
     if (this.valLow) this.valLow.textContent = bar.low.toFixed(2);
@@ -897,6 +906,7 @@ export class ChartControllerComponent {
   }
 
   updateLegendToLatest() {
+    this._lastLegendBar = null;
     const sim = this.store.simulator;
     const current = sim ? sim.getCurrentBar() : null;
     if (current) this.updateLegend(current);

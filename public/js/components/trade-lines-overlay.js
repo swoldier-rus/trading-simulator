@@ -70,13 +70,13 @@ export class TradeLinesOverlayComponent {
 
     if (this._hasSubscribedRangeChange) return;
 
-    // 2. Subscribe to OpenAlgoCharts native events
+    // 2. Subscribe to OpenAlgoCharts native events (coalesced via rAF)
     if (typeof chart.on === 'function') {
-      chart.on('zoom', () => this.render(this._cachedLatestBar));
-      chart.on('pan', () => this.render(this._cachedLatestBar));
-      chart.on('drag', () => this.render(this._cachedLatestBar));
-      chart.on('resize', () => this.render(this._cachedLatestBar));
-      chart.on('layout:change', () => this.render(this._cachedLatestBar));
+      chart.on('zoom', () => this.scheduleRender(this._cachedLatestBar));
+      chart.on('pan', () => this.scheduleRender(this._cachedLatestBar));
+      chart.on('drag', () => this.scheduleRender(this._cachedLatestBar));
+      chart.on('resize', () => this.scheduleRender(this._cachedLatestBar));
+      chart.on('layout:change', () => this.scheduleRender(this._cachedLatestBar));
     }
 
     // 3. Hook into timeScale (works for both getter/object and function)
@@ -86,17 +86,17 @@ export class TradeLinesOverlayComponent {
         const origOnChange = timeScale._onChange;
         timeScale._onChange = (e) => {
           if (origOnChange) origOnChange(e);
-          this.render(this._cachedLatestBar);
+          this.scheduleRender(this._cachedLatestBar);
         };
       } else if (typeof timeScale.setChangeHandler === 'function') {
         timeScale.setChangeHandler(() => {
-          this.render(this._cachedLatestBar);
+          this.scheduleRender(this._cachedLatestBar);
         });
       }
 
       if (typeof timeScale.subscribeVisibleLogicalRangeChange === 'function') {
         try {
-          timeScale.subscribeVisibleLogicalRangeChange(() => this.render(this._cachedLatestBar));
+          timeScale.subscribeVisibleLogicalRangeChange(() => this.scheduleRender(this._cachedLatestBar));
         } catch (err) {
           console.warn('Failed to subscribe to visible logical range change:', err);
         }
@@ -111,9 +111,13 @@ export class TradeLinesOverlayComponent {
   }
 
   scheduleRender(latestBar = null) {
+    if (latestBar !== null && latestBar !== undefined) {
+      this._cachedLatestBar = latestBar;
+    }
+
     if (this.dragState) {
       // While dragging, don't update positions or DOM structure
-      this.updatePnLOnly(latestBar);
+      this.updatePnLOnly(this._cachedLatestBar);
       return;
     }
 
@@ -122,7 +126,7 @@ export class TradeLinesOverlayComponent {
 
     requestAnimationFrame(() => {
       this._renderPending = false;
-      this.render(latestBar);
+      this.render(this._cachedLatestBar);
     });
   }
 

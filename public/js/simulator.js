@@ -1,4 +1,6 @@
 // Market Simulator / Bar Replay Engine for Historical Trading
+import { binarySearchCandleFloorIndex } from './core/utils.js';
+
 class MarketSimulator {
   constructor() {
     this.allCandles = [];
@@ -256,13 +258,8 @@ class MarketSimulator {
   jumpToBar(timeOrIndex) {
     let index = -1;
     if (typeof timeOrIndex === 'number' && timeOrIndex > 1000000) {
-      // It's a timestamp: find latest candle that opened at or before timeOrIndex
-      for (let i = this.allCandles.length - 1; i >= 0; i--) {
-        if (this.allCandles[i].time <= timeOrIndex) {
-          index = i;
-          break;
-        }
-      }
+      // It's a timestamp: find latest candle that opened at or before timeOrIndex (O(log N))
+      index = binarySearchCandleFloorIndex(this.allCandles, timeOrIndex);
       if (index === -1 && this.allCandles.length > 0) {
         if (timeOrIndex <= this.allCandles[0].time) index = 0;
         else index = this.allCandles.length - 1;

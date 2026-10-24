@@ -83,14 +83,14 @@ export class SessionBreaksOverlayComponent {
 
     if (this._hasSubscribedRangeChange) return;
 
-    // 2. Hook into chart on('zoom'), on('pan'), on('drag'), on('scroll'), on('layout:change')
+    // 2. Hook into chart on('zoom'), on('pan'), on('drag'), on('scroll'), on('layout:change') (coalesced via rAF)
     if (typeof chart.on === 'function') {
-      chart.on('zoom', () => this.render());
-      chart.on('pan', () => this.render());
-      chart.on('drag', () => this.render());
-      chart.on('scroll', () => this.render());
-      chart.on('resize', () => this.render());
-      chart.on('layout:change', () => this.render());
+      chart.on('zoom', () => this.scheduleRender());
+      chart.on('pan', () => this.scheduleRender());
+      chart.on('drag', () => this.scheduleRender());
+      chart.on('scroll', () => this.scheduleRender());
+      chart.on('resize', () => this.scheduleRender());
+      chart.on('layout:change', () => this.scheduleRender());
     }
 
     // 3. Hook into timeScale change handler
@@ -100,15 +100,15 @@ export class SessionBreaksOverlayComponent {
         const origOnChange = timeScale._onChange;
         timeScale._onChange = (e) => {
           if (origOnChange) origOnChange(e);
-          this.render();
+          this.scheduleRender();
         };
       } else if (typeof timeScale.setChangeHandler === 'function') {
-        timeScale.setChangeHandler(() => this.render());
+        timeScale.setChangeHandler(() => this.scheduleRender());
       }
 
       if (typeof timeScale.subscribeVisibleLogicalRangeChange === 'function') {
         try {
-          timeScale.subscribeVisibleLogicalRangeChange(() => this.render());
+          timeScale.subscribeVisibleLogicalRangeChange(() => this.scheduleRender());
         } catch (e) {}
       }
 
@@ -179,7 +179,18 @@ export class SessionBreaksOverlayComponent {
 
     const lines = [];
 
-    for (let i = 1; i < candles.length; i++) {
+    // Optimize loop to only process candles within or immediately adjacent to the visible viewport
+    let startIndex = 1;
+    let endIndex = candles.length - 1;
+    if (typeof chart.getVisibleLogicalRange === 'function') {
+      const range = chart.getVisibleLogicalRange();
+      if (range && typeof range.from === 'number' && typeof range.to === 'number') {
+        startIndex = Math.max(1, Math.floor(range.from) - 2);
+        endIndex = Math.min(candles.length - 1, Math.ceil(range.to) + 2);
+      }
+    }
+
+    for (let i = startIndex; i <= endIndex; i++) {
       const prev = candles[i - 1];
       const curr = candles[i];
 

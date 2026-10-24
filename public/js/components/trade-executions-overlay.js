@@ -1,5 +1,6 @@
 // components/trade-executions-overlay.js - TradingView-Style Trade Executions Overlay (Markers on Candles, No Track Lines, Grouped Tooltips)
 import { eventBus } from '../core/event-bus.js';
+import { binarySearchCandleFloor } from '../core/utils.js';
 
 export class TradeExecutionsOverlayComponent {
   constructor(store) {
@@ -77,22 +78,22 @@ export class TradeExecutionsOverlayComponent {
 
     if (this._hasSubscribedRangeChange) return;
 
-    // 2. Subscribe to OpenAlgoCharts native events
+    // 2. Subscribe to OpenAlgoCharts native events (coalesced via rAF)
     if (typeof chart.on === 'function') {
       chart.on('zoom', () => {
         this.hideTooltip();
-        this.render();
+        this.scheduleRender();
       });
       chart.on('pan', () => {
         this.hideTooltip();
-        this.render();
+        this.scheduleRender();
       });
       chart.on('drag', () => {
         this.hideTooltip();
-        this.render();
+        this.scheduleRender();
       });
-      chart.on('resize', () => this.render());
-      chart.on('layout:change', () => this.render());
+      chart.on('resize', () => this.scheduleRender());
+      chart.on('layout:change', () => this.scheduleRender());
     }
 
     // 3. Hook into timeScale (works for both getter/object and function)
@@ -103,12 +104,12 @@ export class TradeExecutionsOverlayComponent {
         timeScale._onChange = (e) => {
           if (origOnChange) origOnChange(e);
           this.hideTooltip();
-          this.render();
+          this.scheduleRender();
         };
       } else if (typeof timeScale.setChangeHandler === 'function') {
         timeScale.setChangeHandler(() => {
           this.hideTooltip();
-          this.render();
+          this.scheduleRender();
         });
       }
 
@@ -116,7 +117,7 @@ export class TradeExecutionsOverlayComponent {
         try {
           timeScale.subscribeVisibleLogicalRangeChange(() => {
             this.hideTooltip();
-            this.render();
+            this.scheduleRender();
           });
         } catch (err) {
           console.warn('Failed to subscribe to visible logical range change:', err);
@@ -190,24 +191,8 @@ export class TradeExecutionsOverlayComponent {
     const candles = sim && Array.isArray(sim.allCandles) ? sim.allCandles : null;
     if (!candles || candles.length === 0) return null;
 
-    // 1. Exact match
-    const exact = candles.find(c => c.time === time);
-    if (exact) return exact;
-
-    // 2. Binary search for largest c.time <= time
-    let low = 0;
-    let high = candles.length - 1;
-    let best = null;
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (candles[mid].time <= time) {
-        best = candles[mid];
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    return best || candles[0];
+    // Binary search for exact or latest candle with time <= targetTime (O(log N))
+    return binarySearchCandleFloor(candles, time) || candles[0];
   }
 
   formatTradeDate(timeSec) {

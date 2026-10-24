@@ -57,3 +57,71 @@ export function showToast(message, type = 'info') {
     toast.style.display = 'none';
   }, 3500);
 }
+
+/**
+ * Binary search for candle with exact matching timestamp.
+ * Assumes candles are sorted chronologically ascending by .time.
+ * Complexity: O(log N)
+ * @param {Array<{time: number}>} candles
+ * @param {number} targetTime
+ * @returns {object|null}
+ */
+export function binarySearchCandleExact(candles, targetTime) {
+  if (!candles || candles.length === 0 || typeof targetTime !== 'number') return null;
+  let low = 0;
+  let high = candles.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const midTime = candles[mid].time;
+    if (midTime === targetTime) {
+      return candles[mid];
+    } else if (midTime < targetTime) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * Binary search for index of latest candle with time <= targetTime (floor index).
+ * Assumes candles are sorted chronologically ascending by .time.
+ * Complexity: O(log N)
+ * @param {Array<{time: number}>} candles
+ * @param {number} targetTime
+ * @returns {number} index of floor candle, or -1 if all candles have time > targetTime
+ */
+export function binarySearchCandleFloorIndex(candles, targetTime) {
+  if (!candles || candles.length === 0 || typeof targetTime !== 'number') return -1;
+  let low = 0;
+  let high = candles.length - 1;
+  let floorIdx = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const midTime = candles[mid].time;
+    if (midTime === targetTime) {
+      return mid;
+    } else if (midTime < targetTime) {
+      floorIdx = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return floorIdx;
+}
+
+/**
+ * Binary search for latest candle with time <= targetTime (floor candle).
+ * Assumes candles are sorted chronologically ascending by .time.
+ * Complexity: O(log N)
+ * @param {Array<{time: number}>} candles
+ * @param {number} targetTime
+ * @returns {object|null}
+ */
+export function binarySearchCandleFloor(candles, targetTime) {
+  const idx = binarySearchCandleFloorIndex(candles, targetTime);
+  return idx >= 0 ? candles[idx] : null;
+}
+
