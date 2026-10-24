@@ -54,10 +54,28 @@ export class ChartControllerComponent {
     if (!this.chartEl || !window.OpenAlgoCharts) return;
 
     try {
+      const appearanceConfig = this.store.get('chartAppearanceConfig');
+      let initialBg = '#131722';
+      let initialGrid = '#1e222d';
+      if (appearanceConfig?.background) {
+        if (appearanceConfig.background.type === 'gradient') {
+          initialBg = 'transparent';
+          const g1 = appearanceConfig.background.gradientColor1 || '#1e222d';
+          const g2 = appearanceConfig.background.gradientColor2 || '#131722';
+          this.chartEl.style.background = `linear-gradient(to bottom, ${g1}, ${g2})`;
+        } else {
+          initialBg = appearanceConfig.background.color || '#131722';
+          this.chartEl.style.background = initialBg;
+        }
+      }
+      if (appearanceConfig?.grid?.vertColor) {
+        initialGrid = appearanceConfig.grid.vertColor;
+      }
+
       const chartTheme = {
         ...OpenAlgoCharts.darkTheme,
-        background: '#131722',
-        grid: '#1e222d',
+        background: initialBg,
+        grid: initialGrid,
         axisText: '#787b86',
         axisLine: '#2a2e39',
         paneSeparator: '#2a2e39',
@@ -100,6 +118,12 @@ export class ChartControllerComponent {
       }
 
       this.store.chart = this.chart;
+
+      // Apply appearance settings (grid lines, styles, background)
+      if (appearanceConfig) {
+        this.applyAppearance(appearanceConfig);
+      }
+      eventBus.on('state:chartAppearanceConfig', (cfg) => this.applyAppearance(cfg));
 
       // Instant point placement on pointerdown for multi-point path & polyline tools (TradingView style)
       if (this.chart._input && typeof this.chart._input._onPointerDown === 'function') {
@@ -958,5 +982,61 @@ export class ChartControllerComponent {
     }
 
     return { time: null, isReplay: false, isScrolled: false };
+  }
+
+  applyAppearance(config) {
+    if (!config) return;
+    if (config.background) {
+      this.applyBackground(config.background);
+    }
+    if (config.grid) {
+      this.applyGrid(config.grid);
+    }
+  }
+
+  applyBackground(bgConfig) {
+    if (!this.chart || !this.chartEl) return;
+    const cfg = bgConfig || {};
+    const type = cfg.type || 'solid';
+    const curTheme = this.chart._theme || (window.OpenAlgoCharts ? window.OpenAlgoCharts.darkTheme : {}) || {};
+
+    if (type === 'gradient') {
+      const g1 = cfg.gradientColor1 || '#1e222d';
+      const g2 = cfg.gradientColor2 || '#131722';
+      this.chartEl.style.background = `linear-gradient(to bottom, ${g1}, ${g2})`;
+      if (typeof this.chart.setTheme === 'function') {
+        this.chart.setTheme({ ...curTheme, background: 'transparent' });
+      }
+      this.chartEl.style.background = `linear-gradient(to bottom, ${g1}, ${g2})`;
+    } else {
+      const color = cfg.color || '#131722';
+      this.chartEl.style.background = color;
+      if (typeof this.chart.setTheme === 'function') {
+        this.chart.setTheme({ ...curTheme, background: color });
+      }
+      this.chartEl.style.background = color;
+    }
+
+    if (typeof this.chart.invalidate === 'function') {
+      this.chart.invalidate(e => e.invalidateGlobal(3));
+    }
+  }
+
+  applyGrid(gridConfig) {
+    if (!this.chart) return;
+    const cfg = gridConfig || {};
+    if (typeof this.chart.setGridOptions === 'function') {
+      this.chart.setGridOptions({
+        vertLines: cfg.vertLines !== false,
+        vertColor: cfg.vertColor || '#1e222d',
+        vertStyle: cfg.vertStyle || 'solid',
+        horzLines: cfg.horzLines !== false,
+        horzColor: cfg.horzColor || '#1e222d',
+        horzStyle: cfg.horzStyle || 'solid'
+      });
+    }
+    if (typeof this.chart.invalidate === 'function') {
+      this.chart.invalidate(e => e.invalidateGlobal(3));
+    }
   }
 }

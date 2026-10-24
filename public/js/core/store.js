@@ -11,7 +11,8 @@ const PERSISTED_KEYS = [
   'isMagnetActive',
   'showExecutionsOnChart',
   'showSessionBreaks',
-  'sessionBreaksConfig'
+  'sessionBreaksConfig',
+  'chartAppearanceConfig'
 ];
 
 const STORAGE_KEY = 'trading_simulator_saved_state';
@@ -32,6 +33,22 @@ class AppStore {
         color: 'rgba(255, 255, 255, 0.2)',
         width: 1,
         style: 'dashed'
+      },
+      chartAppearanceConfig: {
+        background: {
+          type: 'solid',
+          color: '#131722',
+          gradientColor1: '#1e222d',
+          gradientColor2: '#131722'
+        },
+        grid: {
+          vertLines: true,
+          vertColor: '#1e222d',
+          vertStyle: 'solid',
+          horzLines: true,
+          horzColor: '#1e222d',
+          horzStyle: 'solid'
+        }
       },
       currentPrice: 0,
       currentSelectedSide: 'BUY',
@@ -68,6 +85,38 @@ class AppStore {
             this.state[key] = saved[key];
           }
         }
+      }
+
+      const dedicatedAppRaw = localStorage.getItem('trading_simulator_chart_appearance');
+      if (dedicatedAppRaw) {
+        try {
+          const dedicatedApp = JSON.parse(dedicatedAppRaw);
+          this.state.chartAppearanceConfig = {
+            ...this.state.chartAppearanceConfig,
+            ...dedicatedApp,
+            background: { ...this.state.chartAppearanceConfig.background, ...(dedicatedApp.background || {}) },
+            grid: { ...this.state.chartAppearanceConfig.grid, ...(dedicatedApp.grid || {}) }
+          };
+        } catch (e) {}
+      } else if (this.state.chartAppearanceConfig) {
+        this.state.chartAppearanceConfig = {
+          background: {
+            type: 'solid',
+            color: '#131722',
+            gradientColor1: '#1e222d',
+            gradientColor2: '#131722',
+            ...(this.state.chartAppearanceConfig.background || {})
+          },
+          grid: {
+            vertLines: true,
+            vertColor: '#1e222d',
+            vertStyle: 'solid',
+            horzLines: true,
+            horzColor: '#1e222d',
+            horzStyle: 'solid',
+            ...(this.state.chartAppearanceConfig.grid || {})
+          }
+        };
       }
     } catch (e) {
       console.warn('[AppStore] Failed to load persisted state:', e);

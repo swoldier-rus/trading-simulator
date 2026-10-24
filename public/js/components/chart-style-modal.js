@@ -100,6 +100,23 @@ const CHART_TYPE_TITLES = {
 
 const STORAGE_KEY = 'trading_simulator_chart_custom_styles';
 
+export const DEFAULT_APPEARANCE_CONFIG = {
+  background: {
+    type: 'solid',
+    color: '#131722',
+    gradientColor1: '#1e222d',
+    gradientColor2: '#131722'
+  },
+  grid: {
+    vertLines: true,
+    vertColor: '#1e222d',
+    vertStyle: 'solid',
+    horzLines: true,
+    horzColor: '#1e222d',
+    horzStyle: 'solid'
+  }
+};
+
 export class ChartStyleModalComponent {
   constructor(store) {
     this.store = store;
@@ -150,6 +167,9 @@ export class ChartStyleModalComponent {
       downColor: 'rgba(242, 54, 69, 0.45)'
     };
     this.backupVolumeColors = { ...this.currentWorkingVolumeColors };
+
+    this.currentWorkingAppearance = JSON.parse(JSON.stringify(DEFAULT_APPEARANCE_CONFIG));
+    this.backupAppearance = JSON.parse(JSON.stringify(DEFAULT_APPEARANCE_CONFIG));
 
     this.currentWorkingSessionBreaks = {
       enabled: true,
@@ -291,6 +311,13 @@ export class ChartStyleModalComponent {
     this.backupSessionBreaks = { ...sessionBreaksConfig };
     this.currentWorkingSessionBreaks = { ...sessionBreaksConfig };
 
+    const appConfig = this.store.get('chartAppearanceConfig') || DEFAULT_APPEARANCE_CONFIG;
+    this.backupAppearance = {
+      background: { ...DEFAULT_APPEARANCE_CONFIG.background, ...(appConfig.background || {}) },
+      grid: { ...DEFAULT_APPEARANCE_CONFIG.grid, ...(appConfig.grid || {}) }
+    };
+    this.currentWorkingAppearance = JSON.parse(JSON.stringify(this.backupAppearance));
+
     if (this.modalTitle) {
       this.modalTitle.textContent = 'Настройки графика';
     }
@@ -332,6 +359,12 @@ export class ChartStyleModalComponent {
       this.store.chartController.applyVolumeColors(this.backupVolumeColors, true);
     }
 
+    // Revert appearance
+    if (this.backupAppearance) {
+      this.currentWorkingAppearance = JSON.parse(JSON.stringify(this.backupAppearance));
+      this.applyAppearanceLivePreview();
+    }
+
     // Revert session breaks
     if (this.backupSessionBreaks) {
       this.store.set('sessionBreaksConfig', { ...this.backupSessionBreaks });
@@ -360,6 +393,18 @@ export class ChartStyleModalComponent {
 
     if (this.currentWorkingVolumeColors && this.store.chartController) {
       this.store.chartController.saveVolumeColors(this.currentWorkingVolumeColors);
+    }
+
+    if (this.currentWorkingAppearance) {
+      this.store.set('chartAppearanceConfig', JSON.parse(JSON.stringify(this.currentWorkingAppearance)));
+      try {
+        localStorage.setItem('trading_simulator_chart_appearance', JSON.stringify(this.currentWorkingAppearance));
+      } catch (e) {
+        console.warn('[ChartStyleModal] Failed to save appearance to localStorage:', e);
+      }
+      if (this.store.chartController) {
+        this.store.chartController.applyAppearance(this.currentWorkingAppearance);
+      }
     }
 
     if (this.currentWorkingSessionBreaks) {
@@ -397,6 +442,8 @@ export class ChartStyleModalComponent {
       this.renderChartForm();
       showToast('Настройки графика сброшены по умолчанию', 'info');
     } else if (this.activeTab === 'appearance') {
+      this.currentWorkingAppearance = JSON.parse(JSON.stringify(DEFAULT_APPEARANCE_CONFIG));
+      this.applyAppearanceLivePreview();
       this.currentWorkingSessionBreaks = {
         enabled: true,
         color: 'rgba(255, 255, 255, 0.2)',
@@ -406,6 +453,24 @@ export class ChartStyleModalComponent {
       this.applySessionBreaksLivePreview();
       this.renderAppearanceForm();
       showToast('Настройки оформления сброшены по умолчанию', 'info');
+    }
+  }
+
+  applyAppearanceLivePreview() {
+    if (this.store.chartController && this.currentWorkingAppearance) {
+      this.store.chartController.applyAppearance(this.currentWorkingAppearance);
+    }
+  }
+
+  applyBackgroundLivePreview() {
+    if (this.store.chartController && this.currentWorkingAppearance?.background) {
+      this.store.chartController.applyBackground(this.currentWorkingAppearance.background);
+    }
+  }
+
+  applyGridLivePreview() {
+    if (this.store.chartController && this.currentWorkingAppearance?.grid) {
+      this.store.chartController.applyGrid(this.currentWorkingAppearance.grid);
     }
   }
 
@@ -505,7 +570,7 @@ export class ChartStyleModalComponent {
   applySessionBreaksLivePreview() {
     this.store.set('sessionBreaksConfig', { ...this.currentWorkingSessionBreaks });
     this.store.set('showSessionBreaks', this.currentWorkingSessionBreaks.enabled);
-    if (this.store.components?.chartOrderMenu) {
+    if (typeof this.store.components?.chartOrderMenu?.updateCheckmarks === 'function') {
       this.store.components.chartOrderMenu.updateCheckmarks();
     }
     if (this.store.sessionBreaksOverlay) {
@@ -540,14 +605,139 @@ export class ChartStyleModalComponent {
     if (!this.appearanceBody) return;
     this.appearanceBody.innerHTML = '';
 
-    const sectionTitle = document.createElement('div');
-    sectionTitle.className = 'tv-settings-section-title';
-    sectionTitle.textContent = 'Границы сессий';
-    this.appearanceBody.appendChild(sectionTitle);
+    const appCfg = this.currentWorkingAppearance || DEFAULT_APPEARANCE_CONFIG;
+    const bg = appCfg.background || DEFAULT_APPEARANCE_CONFIG.background;
+    const grid = appCfg.grid || DEFAULT_APPEARANCE_CONFIG.grid;
+
+    // 1. Секция «Холст»
+    const canvasSectionTitle = document.createElement('div');
+    canvasSectionTitle.className = 'tv-settings-section-title';
+    canvasSectionTitle.textContent = 'Холст';
+    this.appearanceBody.appendChild(canvasSectionTitle);
+
+    // Строка: Фон
+    const bgRow = document.createElement('div');
+    bgRow.className = 'style-setting-row';
+
+    const bgLeft = document.createElement('div');
+    bgLeft.className = 'style-setting-left';
+    bgLeft.textContent = 'Фон';
+    bgRow.appendChild(bgLeft);
+
+    const bgRight = document.createElement('div');
+    bgRight.className = 'style-setting-control';
+    bgRight.id = 'appearanceBgControls';
+
+    const renderBgControls = () => {
+      this.closeColorPopover();
+      bgRight.innerHTML = '';
+
+      const typeSelect = this.createBgTypeSelect(bg.type || 'solid', (newType) => {
+        bg.type = newType;
+        this.applyBackgroundLivePreview();
+        renderBgControls();
+      });
+      bgRight.appendChild(typeSelect);
+
+      if (bg.type === 'gradient') {
+        const btnColor1 = this.createColorButton(
+          bg.gradientColor1 || '#1e222d',
+          (c) => {
+            bg.gradientColor1 = c;
+            this.applyBackgroundLivePreview();
+          },
+          'Верхний цвет градиента',
+          { showOpacity: true }
+        );
+        const btnColor2 = this.createColorButton(
+          bg.gradientColor2 || '#131722',
+          (c) => {
+            bg.gradientColor2 = c;
+            this.applyBackgroundLivePreview();
+          },
+          'Нижний цвет градиента',
+          { showOpacity: true }
+        );
+        bgRight.appendChild(btnColor1);
+        bgRight.appendChild(btnColor2);
+      } else {
+        const btnColor = this.createColorButton(
+          bg.color || '#131722',
+          (c) => {
+            bg.color = c;
+            this.applyBackgroundLivePreview();
+          },
+          'Цвет фона',
+          { showOpacity: true }
+        );
+        bgRight.appendChild(btnColor);
+      }
+    };
+
+    renderBgControls();
+    bgRow.appendChild(bgRight);
+    this.appearanceBody.appendChild(bgRow);
+
+    // 2. Секция «Линии сетки»
+    const gridSectionTitle = document.createElement('div');
+    gridSectionTitle.className = 'tv-settings-section-title';
+    gridSectionTitle.style.marginTop = '18px';
+    gridSectionTitle.textContent = 'Линии сетки';
+    this.appearanceBody.appendChild(gridSectionTitle);
+
+    // Строка: Вертикальные линии сетки
+    const vertRow = this.createSettingRow({
+      label: 'Вертикальные линии сетки',
+      hasCheckbox: true,
+      checked: grid.vertLines !== false,
+      onCheck: (val) => {
+        grid.vertLines = val;
+        this.applyGridLivePreview();
+      },
+      controls: [
+        this.createColorButton(grid.vertColor || '#1e222d', (c) => {
+          grid.vertColor = c;
+          this.applyGridLivePreview();
+        }, 'Цвет вертикальных линий', { showOpacity: true }),
+        this.createStyleSelect(grid.vertStyle || 'solid', (st) => {
+          grid.vertStyle = st;
+          this.applyGridLivePreview();
+        })
+      ]
+    });
+    this.appearanceBody.appendChild(vertRow);
+
+    // Строка: Горизонтальные линии сетки
+    const horzRow = this.createSettingRow({
+      label: 'Горизонтальные линии сетки',
+      hasCheckbox: true,
+      checked: grid.horzLines !== false,
+      onCheck: (val) => {
+        grid.horzLines = val;
+        this.applyGridLivePreview();
+      },
+      controls: [
+        this.createColorButton(grid.horzColor || '#1e222d', (c) => {
+          grid.horzColor = c;
+          this.applyGridLivePreview();
+        }, 'Цвет горизонтальных линий', { showOpacity: true }),
+        this.createStyleSelect(grid.horzStyle || 'solid', (st) => {
+          grid.horzStyle = st;
+          this.applyGridLivePreview();
+        })
+      ]
+    });
+    this.appearanceBody.appendChild(horzRow);
+
+    // 3. Секция «Границы сессий»
+    const sessionSectionTitle = document.createElement('div');
+    sessionSectionTitle.className = 'tv-settings-section-title';
+    sessionSectionTitle.style.marginTop = '18px';
+    sessionSectionTitle.textContent = 'Границы сессий';
+    this.appearanceBody.appendChild(sessionSectionTitle);
 
     const cfg = this.currentWorkingSessionBreaks;
-
-    const row = this.createSettingRow({
+    const sessionRow = this.createSettingRow({
       label: 'Границы сессий',
       hasCheckbox: true,
       checked: cfg.enabled !== false,
@@ -570,8 +760,7 @@ export class ChartStyleModalComponent {
         })
       ]
     });
-
-    this.appearanceBody.appendChild(row);
+    this.appearanceBody.appendChild(sessionRow);
   }
 
   renderCandleSettings() {
@@ -870,14 +1059,14 @@ export class ChartStyleModalComponent {
     return select;
   }
 
-  createStyleSelect(initialStyle = 'dashed', onChange) {
+  createStyleSelect(initialStyle = 'solid', onChange) {
     const select = document.createElement('select');
     select.className = 'style-select-style';
 
     const styles = [
+      { id: 'solid', label: 'Сплошная' },
       { id: 'dashed', label: 'Пунктирная' },
-      { id: 'dotted', label: 'Точки' },
-      { id: 'solid', label: 'Сплошная' }
+      { id: 'dotted', label: 'Точки' }
     ];
 
     styles.forEach(s => {
@@ -885,6 +1074,31 @@ export class ChartStyleModalComponent {
       opt.value = s.id;
       opt.textContent = s.label;
       if (initialStyle === s.id) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    select.onchange = (e) => {
+      if (typeof onChange === 'function') onChange(e.target.value);
+    };
+
+    return select;
+  }
+
+  createBgTypeSelect(initialType = 'solid', onChange) {
+    const select = document.createElement('select');
+    select.className = 'style-select-style';
+    select.style.minWidth = '110px';
+
+    const types = [
+      { id: 'solid', label: 'Сплошной' },
+      { id: 'gradient', label: 'Градиент' }
+    ];
+
+    types.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      if (initialType === t.id) opt.selected = true;
       select.appendChild(opt);
     });
 

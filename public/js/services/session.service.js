@@ -27,6 +27,7 @@ class SessionPersistenceService {
     eventBus.on('state:showExecutionsOnChart', () => this.scheduleSave());
     eventBus.on('state:showSessionBreaks', () => this.scheduleSave());
     eventBus.on('state:sessionBreaksConfig', () => this.scheduleSave());
+    eventBus.on('state:chartAppearanceConfig', () => this.scheduleSave());
     eventBus.on('state:currentTimeframe', () => this.scheduleSave());
     eventBus.on('state:currentSymbol', () => this.scheduleSave());
     eventBus.on('state:currentChartType', () => this.scheduleSave());
@@ -128,7 +129,8 @@ class SessionPersistenceService {
       ui: {
         showExecutionsOnChart: this.store.get('showExecutionsOnChart') !== false,
         showSessionBreaks: this.store.get('showSessionBreaks') !== false,
-        sessionBreaksConfig: this.store.get('sessionBreaksConfig') || null
+        sessionBreaksConfig: this.store.get('sessionBreaksConfig') || null,
+        chartAppearanceConfig: this.store.get('chartAppearanceConfig') || null
       }
     };
   }
@@ -225,6 +227,12 @@ class SessionPersistenceService {
       }
       if (saved.ui && saved.ui.sessionBreaksConfig) {
         this.store.set('sessionBreaksConfig', saved.ui.sessionBreaksConfig);
+      }
+      if (saved.ui && saved.ui.chartAppearanceConfig) {
+        this.store.set('chartAppearanceConfig', saved.ui.chartAppearanceConfig);
+        if (this.store.chartController) {
+          this.store.chartController.applyAppearance(saved.ui.chartAppearanceConfig);
+        }
       }
 
       // 2. Paper trading account
