@@ -107,7 +107,11 @@ export class DrawingRailComponent {
           this._pending.pop();
         }
       }
-      return origFinish.call(this);
+      const res = origFinish.call(this);
+      if (store.fsm) {
+        store.fsm.finishDrawing();
+      }
+      return res;
     };
   }
 
@@ -120,6 +124,14 @@ export class DrawingRailComponent {
 
   selectTool(tool, activeBtn = null) {
     this.highlightTool(tool);
+
+    if (this.store.fsm) {
+      if (tool === 'cursor') {
+        this.store.fsm.finishDrawing();
+      } else {
+        this.store.fsm.startDrawing(tool);
+      }
+    }
 
     if (!this.store.drawingController) return;
 
@@ -140,5 +152,8 @@ export class DrawingRailComponent {
 
   resetToCursor() {
     this.highlightTool('cursor');
+    if (this.store.fsm) {
+      this.store.fsm.finishDrawing();
+    }
   }
 }

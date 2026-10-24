@@ -214,6 +214,7 @@ export class ChartControllerComponent {
 
       // Chart click handler (jump bar selection & on-chart close actions)
       this.chart.subscribeClick((param) => {
+        if (this.store.fsm && !this.store.fsm.canHandleChartClick()) return;
         if (this.handleJumpBarClick(param)) return;
         this.handleChartClickAction(param);
       });
@@ -221,7 +222,8 @@ export class ChartControllerComponent {
       // Direct DOM click listener for jump bar selection to guarantee 100% responsiveness
       if (this.chartEl) {
         this.chartEl.addEventListener('click', (e) => {
-          if (this.store.get('isSelectingJumpBar')) {
+          const isSelecting = this.store.fsm ? this.store.fsm.isSelectingJumpBar() : this.store.get('isSelectingJumpBar');
+          if (isSelecting) {
             this.handleJumpBarClick(null, e);
           }
         }, true);
@@ -230,6 +232,7 @@ export class ChartControllerComponent {
       // Trading and viewport events on chart
       if (typeof this.chart.on === 'function') {
         this.chart.on('click', (param) => {
+          if (this.store.fsm && !this.store.fsm.canHandleChartClick()) return;
           if (this.handleJumpBarClick(param)) return;
           this.handleChartClickAction(param);
         });
@@ -787,7 +790,8 @@ export class ChartControllerComponent {
   }
 
   handleJumpBarClick(param, event = null) {
-    if (!this.store.get('isSelectingJumpBar')) return false;
+    const isSelecting = this.store.fsm ? this.store.fsm.isSelectingJumpBar() : this.store.get('isSelectingJumpBar');
+    if (!isSelecting) return false;
 
     // Resolve time from param or event
     let targetTime = null;
@@ -811,11 +815,15 @@ export class ChartControllerComponent {
 
     if (!targetTime) return false;
 
-    // Turn off selection mode
-    this.store.set('isSelectingJumpBar', false);
-    if (this.chartEl) this.chartEl.style.cursor = 'default';
-    const btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
-    if (btnReplayStartPoint) btnReplayStartPoint.classList.remove('active');
+    // Turn off selection mode via FSM
+    if (this.store.fsm) {
+      this.store.fsm.completeJumpSelection(targetTime);
+    } else {
+      this.store.set('isSelectingJumpBar', false);
+      if (this.chartEl) this.chartEl.style.cursor = 'default';
+      const btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
+      if (btnReplayStartPoint) btnReplayStartPoint.classList.remove('active');
+    }
 
     const sim = this.store.simulator;
     if (sim) {

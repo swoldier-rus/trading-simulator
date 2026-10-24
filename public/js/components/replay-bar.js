@@ -242,10 +242,14 @@ export class ReplayBarComponent {
     if (this.optStartBar) {
       this.optStartBar.onclick = () => {
         this.startPointMenu.style.display = 'none';
-        this.store.set('isSelectingJumpBar', true);
-        eventBus.emit('tool:reset');
-        if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
-        if (this.btnReplayStartPoint) this.btnReplayStartPoint.classList.add('active');
+        if (this.store.fsm) {
+          this.store.fsm.startJumpSelection();
+        } else {
+          this.store.set('isSelectingJumpBar', true);
+          eventBus.emit('tool:reset');
+          if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
+          if (this.btnReplayStartPoint) this.btnReplayStartPoint.classList.add('active');
+        }
         showToast('Кликните на любую свечу на графике, чтобы начать симуляцию с этого момента', 'info');
       };
     }

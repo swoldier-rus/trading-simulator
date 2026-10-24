@@ -1,5 +1,6 @@
 // core/store.js - Central Application State Store
 import { eventBus } from './event-bus.js';
+import { appStateMachine } from './state-machine.js';
 
 const PERSISTED_KEYS = [
   'currentSymbol',
@@ -53,6 +54,8 @@ class AppStore {
     this.indicatorManager = null;
     this.sessionService = null;
     this.rightRail = null;
+    this.fsm = appStateMachine;
+    this.fsm.init(this);
   }
 
   loadPersistedState() {

@@ -674,6 +674,10 @@ export class TradeLinesOverlayComponent {
       currentPrice: initialPrice
     };
 
+    if (this.store.fsm) {
+      this.store.fsm.startTradeDrag({ type: dragType, id: posId || orderId });
+    }
+
     lineEl.classList.add('dragging');
     handle.classList.add('dragging');
 
@@ -773,6 +777,9 @@ export class TradeLinesOverlayComponent {
     handle.onlostpointercapture = null;
 
     this.dragState = null;
+    if (this.store.fsm) {
+      this.store.fsm.finishTradeDrag();
+    }
 
     if (Math.abs(currentPrice - initialPrice) >= 0.01) {
       this.commitPriceChange(type, id, currentPrice);

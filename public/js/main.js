@@ -7,6 +7,7 @@ import { PaperTradingAccount } from './paper-trading.js';
 import { MarketSimulator } from './simulator.js';
 import { IndicatorManager } from './indicators.js';
 import { showToast, timeframeToSeconds } from './core/utils.js';
+import { appStateMachine } from './core/state-machine.js';
 import { SessionPersistenceService } from './services/session.service.js';
 import { cacheService } from './services/cache.service.js';
 import { PortfolioMarketDataService } from './services/portfolio-data.service.js';
@@ -152,6 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   simulator.onStateChange = (state) => {
+    appStateMachine.syncWithSimulator(state);
     eventBus.emit('replay:state-change', state.isReplayActive);
     const cur = simulator.getCurrentBar();
     eventBus.emit('replay:ui-update', {
@@ -451,8 +453,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
       simulator.stepBackward();
     } else if (e.code === 'Escape') {
+      appStateMachine.handleEscape();
       drawingRail.resetToCursor();
-      store.set('isSelectingJumpBar', false);
       modals.closeAll();
       if (store.drawingSettingsModal) {
         store.drawingSettingsModal.close();
@@ -491,6 +493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     portfolioDataService,
     sessionService,
     cacheService,
+    fsm: appStateMachine,
     store,
     eventBus,
     components: {
