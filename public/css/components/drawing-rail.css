@@ -67,3 +67,20 @@
   background-color: var(--tv-border);
   margin: 4px 0;
 }
+
+.left-tool-btn.disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.chart-zoom-box-overlay {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  z-index: 25;
+  border: 1px solid #2962ff;
+  background-color: rgba(41, 98, 255, 0.16);
+  border-radius: 2px;
+  box-sizing: border-box;
+}

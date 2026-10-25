@@ -435,6 +435,19 @@
           </svg>
         </button>
         <div class="left-tool-divider"></div>
+        <button class="left-tool-btn" id="toolZoomIn" data-tool="zoom-in" title="Увеличить масштаб (Shift + выделение)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M12.5 4a8.5 8.5 0 1 0 5.25 15.19l5.03 5.03.71-.71-5.03-5.03A8.5 8.5 0 0 0 12.5 4zm-7.5 8.5a7.5 7.5 0 1 1 15 0 7.5 7.5 0 0 1-15 0z"></path>
+            <path d="M12 9h1v3h3v1h-3v3h-1v-3H9v-1h3V9z"></path>
+          </svg>
+        </button>
+        <button class="left-tool-btn disabled" id="toolZoomOut" title="Уменьшить масштаб (Предыдущий масштаб)">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
+            <path d="M12.5 4a8.5 8.5 0 1 0 5.25 15.19l5.03 5.03.71-.71-5.03-5.03A8.5 8.5 0 0 0 12.5 4zm-7.5 8.5a7.5 7.5 0 1 1 15 0 7.5 7.5 0 0 1-15 0z"></path>
+            <path d="M9 12h7v1H9z"></path>
+          </svg>
+        </button>
+        <div class="left-tool-divider"></div>
         <button class="left-tool-btn" id="toolMagnet" title="Магнит (привязка к ценам OHLC)">
           <svg width="20" height="20" viewBox="0 0 28 28" fill="currentColor">
             <path fill-rule="nonzero" d="M14 10a2 2 0 0 0-2 2v11H6V12c0-4.416 3.584-8 8-8s8 3.584 8 8v11h-6V12a2 2 0 0 0-2-2zm-3 2a3 3 0 0 1 6 0v10h4V12c0-3.864-3.136-7-7-7s-7 3.136-7 7v10h4V12z"></path>
@@ -451,6 +464,7 @@
       <!-- Chart Pane -->
       <div class="chart-container">
         <div id="chart"></div>
+        <div id="chartZoomBoxOverlay" class="chart-zoom-box-overlay" style="display: none;"></div>
 
         <!-- Interactive Drag & Drop Trade Lines Overlay (Positions, SL, TP, Orders) -->
         <div id="chartTradeOverlay" class="chart-trade-overlay"></div>

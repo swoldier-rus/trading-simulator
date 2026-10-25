@@ -119,7 +119,13 @@ export class DrawingRailComponent {
     this.leftToolButtons.forEach(b => b.classList.remove('active'));
     const targetBtn = Array.from(this.leftToolButtons).find(b => b.getAttribute('data-tool') === (tool || 'cursor'));
     if (targetBtn) targetBtn.classList.add('active');
-    if (this.chartEl) this.chartEl.style.cursor = (tool && tool !== 'cursor') ? 'crosshair' : 'default';
+    if (this.chartEl) {
+      if (tool === 'zoom-in') {
+        this.chartEl.style.cursor = 'zoom-in';
+      } else {
+        this.chartEl.style.cursor = (tool && tool !== 'cursor') ? 'crosshair' : 'default';
+      }
+    }
   }
 
   selectTool(tool, activeBtn = null) {
@@ -131,6 +137,20 @@ export class DrawingRailComponent {
       } else {
         this.store.fsm.startDrawing(tool);
       }
+    }
+
+    if (tool === 'zoom-in') {
+      if (this.store.drawingController && this.store.drawingController.activeTool() !== null) {
+        this.store.drawingController.setTool(null);
+      }
+      if (this.store.zoomController) {
+        this.store.zoomController.activateTool();
+      }
+      return;
+    }
+
+    if (this.store.zoomController && this.store.zoomController.isToolActive) {
+      this.store.zoomController.deactivateTool();
     }
 
     if (!this.store.drawingController) return;
@@ -152,6 +172,9 @@ export class DrawingRailComponent {
 
   resetToCursor() {
     this.highlightTool('cursor');
+    if (this.store.zoomController && this.store.zoomController.isToolActive) {
+      this.store.zoomController.deactivateTool();
+    }
     if (this.store.fsm) {
       this.store.fsm.finishDrawing();
     }

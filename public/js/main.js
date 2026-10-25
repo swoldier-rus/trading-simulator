@@ -28,6 +28,7 @@ import { FloatingDrawingToolbarComponent } from './components/floating-drawing-t
 import { DrawingSettingsModalComponent } from './components/drawing-settings-modal.js';
 import { EditOrderModalComponent } from './components/edit-order-modal.js';
 import { ChartStyleModalComponent } from './components/chart-style-modal.js';
+import { ChartZoomController } from './components/chart-zoom-controller.js';
 import { RightRailComponent } from './components/right-rail.js';
 import { SessionBreaksOverlayComponent } from './components/session-breaks-overlay.js';
 
@@ -57,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const chartStyleModal = new ChartStyleModalComponent(store);
   const rightRail = new RightRailComponent(store);
   const sessionBreaksOverlay = new SessionBreaksOverlayComponent(store);
+  const zoomController = new ChartZoomController(store);
 
   store.chartController = chartController;
   store.replayBar = replayBar;
@@ -70,6 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   store.chartStyleModal = chartStyleModal;
   store.rightRail = rightRail;
   store.chartOrderMenu = chartOrderMenu;
+  store.drawingRail = drawingRail;
+  store.zoomController = zoomController;
   store.indicatorManager = new IndicatorManager(store.chart);
   store.components = {
     chartController,
@@ -88,7 +92,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     editOrderModal,
     chartStyleModal,
     rightRail,
-    quickTradeWidget
+    quickTradeWidget,
+    zoomController
   };
 
   const sessionService = new SessionPersistenceService(store);
@@ -574,7 +579,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       floatingDrawingToolbar,
       editOrderModal,
       chartStyleModal,
-      rightRail
+      rightRail,
+      zoomController
     },
     loadCandles,
     prefetchSubsequentBars,
