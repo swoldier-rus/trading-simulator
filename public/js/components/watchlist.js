@@ -5,6 +5,31 @@ import API from '../api.js';
 const DEFAULT_WATCHLIST = ['SBER', 'GAZP', 'LKOH', 'IMOEXF', 'SiZ6', 'NGV6'];
 const STORAGE_KEY = 'tv_watchlist';
 
+/**
+ * Helper to determine if an instrument is a future (FORTS) or a share.
+ * Strictly respects server metadata (type: 'share' / 'future', classCode)
+ * and only falls back to precise regex patterns when metadata is not yet loaded.
+ */
+function isFutureInstrument(type, ticker, classCode) {
+  const normType = (type || '').toLowerCase();
+  if (normType === 'future') return true;
+  if (normType === 'share' || normType === 'stock') return false;
+
+  const normClass = (classCode || '').toUpperCase();
+  if (normClass === 'SPBFUT') return true;
+  if (normClass === 'TQBR' || normClass === 'TQTF' || normClass === 'SMAL') return false;
+
+  const sym = (ticker || '').toUpperCase();
+  // Standard FORTS quarterly/monthly contract: 4 chars, last is digit (e.g. SiZ6, NGV6, BRX6, CKZ6)
+  if (sym.length === 4 && /\d$/.test(sym)) return true;
+  // MOEX perpetual futures (IMOEXF, USDRUBF, GLDRUBF, CNYRUBF, etc.)
+  if (sym === 'IMOEXF' || sym.endsWith('RUBF')) return true;
+  // Continuous synthetic tickers (Si1!, BR1!, etc.)
+  if (sym.endsWith('!') || sym.endsWith('1!')) return true;
+
+  return false;
+}
+
 export class WatchlistComponent {
   constructor(store) {
     this.store = store;
@@ -290,8 +315,7 @@ export class WatchlistComponent {
     this.itemsContainer.innerHTML = this.watchlist.map((ticker, index) => {
       const q = this.quotes.get(ticker) || {};
       const isActive = this.activeTicker && this.activeTicker.toUpperCase() === ticker;
-      const type = (q.type || '').toLowerCase();
-      const isFuture = type === 'future' || (ticker.length === 4 && /\d$/.test(ticker)) || ticker.endsWith('F');
+      const isFuture = isFutureInstrument(q.type, ticker, q.classCode);
       const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
       const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
       const name = q.name || ticker;
@@ -489,6 +513,7 @@ export class WatchlistComponent {
           ticker: upper,
           name: instData.name || upper,
           type: instData.type || 'share',
+          classCode: instData.classCode || '',
           price: instData.price || 0,
           changePercent: instData.changePercent || 0
         });
@@ -533,7 +558,7 @@ export class WatchlistComponent {
       this.modalResults.innerHTML = instruments.map(inst => {
         const ticker = (inst.ticker || '').toUpperCase();
         const isInList = this.watchlist.includes(ticker);
-        const isFuture = inst.type === 'future' || inst.classCode === 'SPBFUT' || (ticker.length === 4 && /\d$/.test(ticker)) || ticker.endsWith('F');
+        const isFuture = isFutureInstrument(inst.type, ticker, inst.classCode);
         const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
         const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
         const name = inst.name || ticker;

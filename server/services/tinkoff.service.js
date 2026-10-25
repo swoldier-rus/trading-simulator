@@ -660,6 +660,7 @@ class TinkoffService {
           name: inst.name,
           figi: inst.figi,
           type: inst.type || 'share',
+          classCode: inst.classCode || 'TQBR',
           currency: inst.currency || 'RUB',
           lot: inst.lot || 1,
           minPriceIncrement: inst.minPriceIncrement || 0.01,
