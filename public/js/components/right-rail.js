@@ -15,10 +15,10 @@ export class RightRailComponent {
   }
 
   initEventListeners() {
-    // Watchlist placeholder (favorite tickers)
+    // Watchlist toggle
     if (this.btnRightWatchlist) {
       this.btnRightWatchlist.onclick = () => {
-        showToast('Панель избранных тикеров (Watchlist) — скоро появится!', 'info');
+        eventBus.emit('watchlist:toggle');
       };
     }
 
@@ -28,6 +28,23 @@ export class RightRailComponent {
         eventBus.emit('orderpanel:toggle');
       };
     }
+
+    // Listen to panel toggled states for mutual exclusivity & icon highlighting
+    eventBus.on('watchlist:toggled', (active) => {
+      this.setWatchlistActive(active);
+      if (active) {
+        // Automatically collapse order panel when watchlist opens
+        this.setOrderPanelActive(false);
+      }
+    });
+
+    eventBus.on('orderpanel:toggled', (active) => {
+      this.setOrderPanelActive(active);
+      if (active) {
+        // Automatically collapse watchlist when order panel opens
+        this.setWatchlistActive(false);
+      }
+    });
 
     // Object tree placeholder (indicators & drawn shapes)
     if (this.btnRightObjectTree) {
@@ -40,6 +57,12 @@ export class RightRailComponent {
   setOrderPanelActive(active) {
     if (this.btnRightOrderPanel) {
       this.btnRightOrderPanel.classList.toggle('active', !!active);
+    }
+  }
+
+  setWatchlistActive(active) {
+    if (this.btnRightWatchlist) {
+      this.btnRightWatchlist.classList.toggle('active', !!active);
     }
   }
 }

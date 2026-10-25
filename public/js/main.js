@@ -31,6 +31,7 @@ import { ChartStyleModalComponent } from './components/chart-style-modal.js';
 import { ChartZoomController } from './components/chart-zoom-controller.js';
 import { RightRailComponent } from './components/right-rail.js';
 import { SessionBreaksOverlayComponent } from './components/session-breaks-overlay.js';
+import { WatchlistComponent } from './components/watchlist.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rightRail = new RightRailComponent(store);
   const sessionBreaksOverlay = new SessionBreaksOverlayComponent(store);
   const zoomController = new ChartZoomController(store);
+  const watchlist = new WatchlistComponent(store);
 
   store.chartController = chartController;
   store.replayBar = replayBar;
@@ -71,6 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   store.editOrderModal = editOrderModal;
   store.chartStyleModal = chartStyleModal;
   store.rightRail = rightRail;
+  store.watchlist = watchlist;
   store.chartOrderMenu = chartOrderMenu;
   store.drawingRail = drawingRail;
   store.zoomController = zoomController;
@@ -83,6 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     drawingRail,
     toolbar,
     orderPanel,
+    watchlist,
     chartOrderMenu,
     bottomDock,
     replayBar,
@@ -583,6 +587,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     cacheService,
     fsm: appStateMachine,
     store,
+    watchlist,
     eventBus,
     components: {
       chartController,
@@ -592,6 +597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       drawingRail,
       toolbar,
       orderPanel,
+      watchlist,
       chartOrderMenu,
       bottomDock,
       replayBar,

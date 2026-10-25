@@ -84,6 +84,13 @@ export class OrderPanelComponent {
       this.setVisible(isCollapsed);
     });
 
+    // Close order panel if watchlist is opened
+    eventBus.on('watchlist:toggled', (active) => {
+      if (active && this.tvOrderPanel && !this.tvOrderPanel.classList.contains('collapsed')) {
+        this.setVisible(false);
+      }
+    });
+
     eventBus.on('symbol:change', () => {
       this.updateLotsDisplay();
       this.updateSubmitButtonDesc();
@@ -283,6 +290,7 @@ export class OrderPanelComponent {
       if (this.btnRightOrderPanel) this.btnRightOrderPanel.classList.remove('active');
       if (this.btnToggleOrderPanel) this.btnToggleOrderPanel.classList.remove('active');
     }
+    eventBus.emit('orderpanel:toggled', !!visible);
     window.dispatchEvent(new Event('resize'));
   }
 

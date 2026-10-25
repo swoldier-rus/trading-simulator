@@ -52,6 +52,9 @@ class TinkoffService {
     this.futuresCatalogTime = 0;
     this.futuresCatalogTtl = 60 * 60 * 1000; // 1 hour
     this.loadingFuturesPromise = null;
+
+    this.quotesCache = new Map();
+    this.quotesCacheTtl = 60 * 1000; // 60 seconds TTL
   }
 
   /**
@@ -555,6 +558,127 @@ class TinkoffService {
       console.error('[TinkoffService] Error fetching candles from Tinkoff:', err.message);
       circuitBreaker.recordFailure(err);
       return null;
+    }
+  }
+
+  /**
+   * Batch fetch latest prices and 24h change % for an array of tickers
+   */
+  async getQuotesBatch(tickers, token) {
+    if (!token || !Array.isArray(tickers) || tickers.length === 0) return [];
+
+    const nowMs = Date.now();
+    const result = [];
+    const missingTickers = [];
+
+    // Check fast cache first
+    for (const t of tickers) {
+      const upper = (t || '').toUpperCase().trim();
+      if (!upper) continue;
+      const cached = this.quotesCache.get(upper);
+      if (cached && (nowMs - cached.timestamp < this.quotesCacheTtl)) {
+        result.push(cached.data);
+      } else {
+        missingTickers.push(upper);
+      }
+    }
+
+    if (missingTickers.length === 0) {
+      return result;
+    }
+
+    try {
+      // Resolve instruments
+      const resolvedList = await Promise.all(
+        missingTickers.map(t => this.findInstrumentByTickerOrFigi(t, token))
+      );
+      const validInstruments = resolvedList.filter(Boolean);
+
+      if (validInstruments.length === 0) {
+        return result;
+      }
+
+      const figis = validInstruments.map(i => i.figi);
+
+      // 1. Fetch last traded prices in a single batch
+      let lastPricesMap = new Map();
+      try {
+        const lpRes = await this.post('tinkoff.public.invest.api.contract.v1.MarketDataService/GetLastPrices', token, {
+          figi: figis
+        });
+        if (lpRes.ok) {
+          const lpData = await lpRes.json();
+          for (const lp of (lpData.lastPrices || [])) {
+            lastPricesMap.set(lp.figi, quotationToNumber(lp.price));
+          }
+        }
+      } catch (e) {
+        console.warn('[TinkoffService] GetLastPrices batch warning:', e.message);
+      }
+
+      // 2. Fetch daily candles for changePercent calculation (last 7 days window)
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+      await Promise.all(validInstruments.map(async (inst) => {
+        let price = lastPricesMap.get(inst.figi) || 0;
+        let changePercent = 0;
+
+        try {
+          const cRes = await this.post('tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles', token, {
+            figi: inst.figi,
+            from: weekAgo.toISOString(),
+            to: now.toISOString(),
+            interval: 'CANDLE_INTERVAL_DAY'
+          });
+
+          if (cRes.ok) {
+            const cData = await cRes.json();
+            const candles = cData.candles || [];
+            if (candles.length >= 2) {
+              const prevClose = quotationToNumber(candles[candles.length - 2].close);
+              const currClose = quotationToNumber(candles[candles.length - 1].close);
+              if (!price) price = currClose;
+              if (prevClose > 0) {
+                changePercent = +(((price - prevClose) / prevClose) * 100).toFixed(2);
+              }
+            } else if (candles.length === 1) {
+              const cOpen = quotationToNumber(candles[0].open);
+              const cClose = quotationToNumber(candles[0].close);
+              if (!price) price = cClose;
+              if (cOpen > 0) {
+                changePercent = +(((price - cOpen) / cOpen) * 100).toFixed(2);
+              }
+            }
+          }
+        } catch (err) {
+          // Fallback if candle fetch fails
+        }
+
+        const quote = {
+          ticker: inst.ticker,
+          name: inst.name,
+          figi: inst.figi,
+          type: inst.type || 'share',
+          currency: inst.currency || 'RUB',
+          lot: inst.lot || 1,
+          minPriceIncrement: inst.minPriceIncrement || 0.01,
+          price,
+          changePercent
+        };
+
+        this.quotesCache.set(inst.ticker, {
+          timestamp: Date.now(),
+          data: quote
+        });
+
+        result.push(quote);
+      }));
+
+      return result;
+    } catch (err) {
+      console.warn('[TinkoffService] Error in getQuotesBatch:', err.message);
+      return result;
     }
   }
 }

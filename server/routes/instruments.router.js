@@ -95,4 +95,36 @@ router.get('/instruments/boundaries', async (req, res) => {
   });
 });
 
+// GET /api/instruments/quotes?tickers=SBER,GAZP,LKOH...
+router.get('/instruments/quotes', async (req, res) => {
+  const currentConfig = configManager.getConfig();
+  const token = currentConfig.tinkoffToken;
+
+  if (!token || token.length < 10) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Токен Т-Инвестиций не настроен',
+      quotes: []
+    });
+  }
+
+  const rawTickers = req.query.tickers || '';
+  const tickers = rawTickers
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (tickers.length === 0) {
+    return res.json({ ok: true, quotes: [] });
+  }
+
+  try {
+    const quotes = await tinkoffService.getQuotesBatch(tickers, token);
+    return res.json({ ok: true, quotes: quotes || [] });
+  } catch (err) {
+    console.error('[InstrumentsRouter] Error fetching quotes batch:', err.message);
+    return res.status(500).json({ ok: false, error: err.message, quotes: [] });
+  }
+});
+
 module.exports = router;

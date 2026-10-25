@@ -77,6 +77,18 @@ const API = {
       console.error('getInstrumentBoundaries error:', err);
       return { ok: false };
     }
+  },
+
+  // Get batch quotes (last prices and change percent)
+  async getQuotes(tickers) {
+    try {
+      const list = Array.isArray(tickers) ? tickers.join(',') : (tickers || '');
+      const res = await fetch(`/api/instruments/quotes?tickers=${encodeURIComponent(list)}`);
+      return await res.json();
+    } catch (err) {
+      console.error('getQuotes error:', err);
+      return { ok: false, quotes: [] };
+    }
   }
 };
 
