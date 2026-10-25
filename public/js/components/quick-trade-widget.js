@@ -130,7 +130,8 @@ export class QuickTradeWidgetComponent {
       sl: null,
       tp: null,
       time: currentBar.time,
-      lotSize
+      lotSize,
+      instrumentType: this.store.get('currentInstrumentType') || 'share'
     });
 
     if (res.ok) {

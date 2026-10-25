@@ -5,6 +5,7 @@ import { API } from '../api.js';
 export class ToolbarComponent {
   constructor(store) {
     this.store = store;
+    this.currentSymbolTab = 'all';
 
     // DOM Elements
     this.symbolTrigger = document.getElementById('symbolTrigger');
@@ -70,7 +71,7 @@ export class ToolbarComponent {
         if (this.symbolSearchInput) {
           this.symbolSearchInput.focus();
         }
-        this.populateSymbolList('');
+        this.populateSymbolList(this.symbolSearchInput ? this.symbolSearchInput.value : '');
       }
     };
 
@@ -79,30 +80,71 @@ export class ToolbarComponent {
         this.populateSymbolList(e.target.value);
       };
     }
+
+    // Category tabs: Все | Акции | Фьючерсы
+    const tabs = this.symbolDropdown.querySelectorAll('.symbol-tab-btn');
+    tabs.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        tabs.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.currentSymbolTab = btn.getAttribute('data-type') || 'all';
+        this.populateSymbolList(this.symbolSearchInput ? this.symbolSearchInput.value : '');
+      };
+    });
   }
 
   async populateSymbolList(query) {
     if (!this.symbolList) return;
     try {
-      const res = await API.searchInstruments(query);
+      const res = await API.searchInstruments(query, this.currentSymbolTab);
       const instruments = res.instruments || [];
       const currentSym = this.store.get('currentSymbol');
 
-      this.symbolList.innerHTML = instruments.map(inst => `
-        <div class="symbol-item ${inst.ticker === currentSym ? 'active' : ''}" data-ticker="${inst.ticker}" data-figi="${inst.figi || ''}" data-lot="${inst.lot || 1}">
-          <div class="symbol-item-top">
-            <span class="symbol-item-ticker">${inst.ticker}</span>
-            <span class="symbol-item-badge">${inst.currency || 'RUB'} • 1 лот = ${inst.lot || 1} шт.</span>
+      if (instruments.length === 0) {
+        this.symbolList.innerHTML = `
+          <div style="padding: 20px; text-align: center; color: var(--tv-text-muted); font-size: 12px;">
+            Инструменты не найдены
           </div>
-          <div class="symbol-item-name">${inst.name}</div>
-        </div>
-      `).join('');
+        `;
+        return;
+      }
+
+      this.symbolList.innerHTML = instruments.map(inst => {
+        const isFuture = inst.type === 'future';
+        const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
+        const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
+        const lotText = isFuture ? `${inst.lot || 1} контр.` : `${inst.lot || 1} шт.`;
+        const subInfo = isFuture
+          ? `${inst.basicAsset ? 'Базовый актив: ' + inst.basicAsset : 'FORTS'}${inst.expirationDate ? ' • До ' + new Date(inst.expirationDate).toLocaleDateString('ru-RU') : ''}`
+          : `${inst.currency || 'RUB'}`;
+
+        return `
+          <div class="symbol-item ${inst.ticker === currentSym ? 'active' : ''}" 
+               data-ticker="${inst.ticker}" 
+               data-figi="${inst.figi || ''}" 
+               data-lot="${inst.lot || 1}"
+               data-type="${inst.type || 'share'}"
+               data-min-step="${inst.minPriceIncrement || 0.01}">
+            <div class="symbol-item-top">
+              <div class="symbol-item-left">
+                <span class="symbol-item-ticker">${inst.ticker}</span>
+                <span class="symbol-badge ${badgeClass}">${badgeLabel}</span>
+              </div>
+              <span class="symbol-item-badge-info">1 лот = ${lotText}</span>
+            </div>
+            <div class="symbol-item-name" title="${inst.name}">${inst.name} • ${subInfo}</div>
+          </div>
+        `;
+      }).join('');
 
       this.symbolList.querySelectorAll('.symbol-item').forEach(item => {
         item.onclick = () => {
           const ticker = item.getAttribute('data-ticker');
           const figi = item.getAttribute('data-figi');
-          const lot = Number(item.getAttribute('data-lot')) || 10;
+          const lot = Number(item.getAttribute('data-lot')) || 1;
+          const instType = item.getAttribute('data-type') || 'share';
+          const minStep = Number(item.getAttribute('data-min-step')) || 0.01;
           const prevSymbol = this.store.get('currentSymbol') || 'SBER';
 
           if (this.symbolDropdown) this.symbolDropdown.classList.remove('open');
@@ -114,10 +156,12 @@ export class ToolbarComponent {
           this.store.set('currentSymbol', ticker);
           this.store.set('currentFigi', figi);
           this.store.set('currentLotSize', lot);
+          this.store.set('currentInstrumentType', instType);
+          this.store.set('currentMinPriceIncrement', minStep);
 
           if (this.symbolTickerText) this.symbolTickerText.textContent = ticker;
 
-          eventBus.emit('symbol:change', { prevSymbol, ticker, figi, lot });
+          eventBus.emit('symbol:change', { prevSymbol, ticker, figi, lot, instrumentType: instType });
         };
       });
     } catch (err) {

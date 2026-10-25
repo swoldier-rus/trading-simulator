@@ -361,7 +361,8 @@ export class OrderPanelComponent {
       sl,
       tp,
       time: currentBar.time,
-      lotSize: this.store.get('currentLotSize')
+      lotSize: this.store.get('currentLotSize'),
+      instrumentType: this.store.get('currentInstrumentType') || 'share'
     });
 
     if (res.ok) {
@@ -376,8 +377,10 @@ export class OrderPanelComponent {
 
   updateLotsDisplay() {
     const lots = Number(this.inputLots ? this.inputLots.value : 1) || 1;
-    const lotSize = this.store.get('currentLotSize');
-    if (this.lotsInfoText) this.lotsInfoText.textContent = `${lots * lotSize} шт.`;
+    const lotSize = this.store.get('currentLotSize') || 1;
+    const isFuture = this.store.get('currentInstrumentType') === 'future';
+    const unit = isFuture ? 'контр.' : 'шт.';
+    if (this.lotsInfoText) this.lotsInfoText.textContent = `${lots * lotSize} ${unit}`;
 
     this.panelChips.forEach(c => {
       c.classList.toggle('active', Number(c.getAttribute('data-lots')) === lots);

@@ -67,11 +67,12 @@ class PaperTradingAccount {
   }
 
   // Open an order (Market or Limit/Stop) on historical data
-  placeOrder({ symbol, side, type = 'MARKET', qty, price, sl = null, tp = null, time = null, lotSize = 1 }) {
+  placeOrder({ symbol, side, type = 'MARKET', qty, price, sl = null, tp = null, time = null, lotSize = 1, instrumentType = 'share' }) {
     qty = Number(qty);
     price = Number(price);
     lotSize = Number(lotSize) || 1;
     const totalShares = qty * lotSize;
+    const unit = instrumentType === 'future' ? 'контр.' : 'шт.';
 
     if (!totalShares || totalShares <= 0 || !price || price <= 0) {
       return { ok: false, error: 'Некорректное количество или цена' };
@@ -104,6 +105,7 @@ class PaperTradingAccount {
           qty: totalShares,
           lots: qty,
           lotSize,
+          instrumentType,
           entryPrice: price,
           currentPrice: price,
           unrealizedPnL: 0,
@@ -136,7 +138,7 @@ class PaperTradingAccount {
           ok: true,
           type: 'POSITION_OPENED',
           position,
-          message: `${side === 'BUY' ? 'Покупка (LONG)' : 'Продажа (SHORT)'} ${qty} лот. (${totalShares} шт.) по ${price.toFixed(2)} ₽`
+          message: `${side === 'BUY' ? 'Покупка (LONG)' : 'Продажа (SHORT)'} ${qty} лот. (${totalShares} ${unit}) по ${price.toFixed(2)} ₽`
         };
       }
 
@@ -260,6 +262,7 @@ class PaperTradingAccount {
           qty: closeShares,
           lots: closeLots,
           lotSize: existingPos.lotSize,
+          instrumentType: existingPos.instrumentType || instrumentType,
           entryPrice: existingPos.entryPrice,
           exitPrice: price,
           pnl: netTradePnL,
@@ -396,6 +399,7 @@ class PaperTradingAccount {
         qty: totalShares,
         lots: qty,
         lotSize,
+        instrumentType,
         price,
         sl: sl ? Number(sl) : null,
         tp: tp ? Number(tp) : null,

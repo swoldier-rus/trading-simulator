@@ -375,7 +375,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       if (data && data.candles && data.candles.length > 0) {
-        store.set('currentLotSize', data.lot || 10);
+        if (data.type) {
+          store.set('currentInstrumentType', data.type);
+        }
+        store.set('currentLotSize', data.lot || 1);
         orderPanel.updateLotsDisplay();
 
         const tokenBadge = document.getElementById('tokenBadge');

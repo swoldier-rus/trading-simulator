@@ -25,7 +25,14 @@
           <span style="font-size: 10px; color: #787b86;">▼</span>
         </div>
         <div class="symbol-dropdown" id="symbolDropdown">
-          <input type="text" class="symbol-search-input" id="symbolSearchInput" placeholder="Поиск инструмента MOEX (напр. SBER, GAZP)..." autocomplete="off">
+          <div class="symbol-search-container">
+            <input type="text" class="symbol-search-input" id="symbolSearchInput" placeholder="Поиск инструмента (напр. SBER, Si, BR, NG)..." autocomplete="off">
+            <div class="symbol-tabs" id="symbolTabs">
+              <button class="symbol-tab-btn active" data-type="all">Все</button>
+              <button class="symbol-tab-btn" data-type="shares">Акции</button>
+              <button class="symbol-tab-btn" data-type="futures">Фьючерсы</button>
+            </div>
+          </div>
           <div class="symbol-list" id="symbolList">
             <!-- Populated dynamically -->
           </div>

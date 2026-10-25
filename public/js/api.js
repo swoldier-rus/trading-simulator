@@ -40,10 +40,10 @@ const API = {
     }
   },
 
-  // Search instruments (MOEX shares)
-  async searchInstruments(query) {
+  // Search instruments (MOEX shares and futures)
+  async searchInstruments(query, type = 'all') {
     try {
-      const res = await fetch(`/api/instruments/search?query=${encodeURIComponent(query || '')}`);
+      const res = await fetch(`/api/instruments/search?query=${encodeURIComponent(query || '')}&type=${encodeURIComponent(type || 'all')}`);
       return await res.json();
     } catch (err) {
       console.error('searchInstruments error:', err);

@@ -6,9 +6,10 @@ const { intervalToSeconds } = require('../services/simulation.service');
 
 const router = express.Router();
 
-// GET /api/instruments/search?query=SBER
+// GET /api/instruments/search?query=SBER&type=all|shares|futures
 router.get('/instruments/search', async (req, res) => {
   const query = (req.query.query || '').trim();
+  const type = (req.query.type || 'all').trim();
   const currentConfig = configManager.getConfig();
   const token = currentConfig.tinkoffToken;
 
@@ -20,7 +21,7 @@ router.get('/instruments/search', async (req, res) => {
     });
   }
 
-  const results = await tinkoffService.searchInstruments(query, token);
+  const results = await tinkoffService.searchInstruments(query, token, type);
   return res.json({ instruments: results || [] });
 });
 
@@ -58,7 +59,7 @@ router.get('/instruments/boundaries', async (req, res) => {
     firstIso = inst.first1dayCandleDate || inst.ipoDate;
   } else {
     // Intraday history from T-Bank
-    firstIso = inst.first1minCandleDate || inst.first1dayCandleDate;
+    firstIso = inst.first1minCandleDate || inst.first1dayCandleDate || inst.ipoDate;
   }
 
   if (!firstIso) {
@@ -78,6 +79,11 @@ router.get('/instruments/boundaries', async (req, res) => {
     figi: inst.figi,
     lot: inst.lot,
     currency: inst.currency,
+    type: inst.type || 'share',
+    classCode: inst.classCode || 'TQBR',
+    minPriceIncrement: inst.minPriceIncrement || 0.01,
+    basicAsset: inst.basicAsset || '',
+    expirationDate: inst.expirationDate || null,
     interval,
     earliestTimeSec,
     earliestDate: new Date(earliestTimeSec * 1000).toISOString(),

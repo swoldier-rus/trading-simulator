@@ -148,7 +148,9 @@ export class EditOrderModalComponent {
     const notional = shares * (this.activeOrder.price || 0);
 
     if (this.sharesInfo) {
-      this.sharesInfo.textContent = `${shares.toLocaleString('ru-RU')} шт.`;
+      const isFuture = this.store.get('currentInstrumentType') === 'future';
+      const unit = isFuture ? 'контр.' : 'шт.';
+      this.sharesInfo.textContent = `${shares.toLocaleString('ru-RU')} ${unit}`;
     }
 
     if (this.notionalVal) {

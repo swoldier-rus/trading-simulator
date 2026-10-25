@@ -46,7 +46,12 @@ class TinkoffService {
     this.sharesCatalog = null;
     this.sharesCatalogTime = 0;
     this.sharesCatalogTtl = 60 * 60 * 1000; // 1 hour
-    this.loadingCatalogPromise = null;
+    this.loadingSharesPromise = null;
+
+    this.futuresCatalog = null;
+    this.futuresCatalogTime = 0;
+    this.futuresCatalogTtl = 60 * 60 * 1000; // 1 hour
+    this.loadingFuturesPromise = null;
   }
 
   /**
@@ -111,11 +116,11 @@ class TinkoffService {
       return this.sharesCatalog;
     }
 
-    if (this.loadingCatalogPromise) {
-      return await this.loadingCatalogPromise;
+    if (this.loadingSharesPromise) {
+      return await this.loadingSharesPromise;
     }
 
-    this.loadingCatalogPromise = (async () => {
+    this.loadingSharesPromise = (async () => {
       try {
         const response = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/Shares', token, {
           instrumentStatus: 'INSTRUMENT_STATUS_BASE'
@@ -143,6 +148,7 @@ class TinkoffService {
             currency: (inst.currency || 'RUB').toUpperCase(),
             exchange: inst.exchange || 'MOEX',
             uid: inst.uid,
+            type: 'share',
             first1minCandleDate: inst.first1minCandleDate || null,
             first1dayCandleDate: inst.first1dayCandleDate || null,
             ipoDate: inst.ipoDate || null
@@ -159,64 +165,193 @@ class TinkoffService {
         console.warn('[TinkoffService] Error fetching shares catalog:', err.message);
         return this.sharesCatalog || [];
       } finally {
-        this.loadingCatalogPromise = null;
+        this.loadingSharesPromise = null;
       }
     })();
 
-    return await this.loadingCatalogPromise;
+    return await this.loadingSharesPromise;
+  }
+
+  /**
+   * Fetch complete futures catalog directly from T-Investments API
+   */
+  async getFuturesCatalog(token) {
+    if (!token || token.length < 10) return [];
+
+    const now = Date.now();
+    if (this.futuresCatalog && (now - this.futuresCatalogTime < this.futuresCatalogTtl)) {
+      return this.futuresCatalog;
+    }
+
+    if (this.loadingFuturesPromise) {
+      return await this.loadingFuturesPromise;
+    }
+
+    this.loadingFuturesPromise = (async () => {
+      try {
+        const response = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/Futures', token, {
+          instrumentStatus: 'INSTRUMENT_STATUS_BASE'
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.warn('[TinkoffService] Futures catalog fetch error:', response.status, errText);
+          return this.futuresCatalog || [];
+        }
+
+        const data = await response.json();
+        const rawList = data.instruments || [];
+
+        // Normalize and filter MOEX / SPBFUT Russian futures
+        const normalized = rawList
+          .filter(inst => inst.classCode === 'SPBFUT' || (inst.exchange && inst.exchange.toLowerCase().includes('moex')) || inst.realExchange === 'REAL_EXCHANGE_MOEX')
+          .map(inst => {
+            const expTime = inst.expirationDate ? new Date(inst.expirationDate).getTime() : 0;
+            return {
+              ticker: (inst.ticker || '').toUpperCase(),
+              name: inst.name || inst.ticker,
+              figi: inst.figi,
+              classCode: inst.classCode || 'SPBFUT',
+              lot: Number(inst.lot) || 1,
+              minPriceIncrement: quotationToNumber(inst.minPriceIncrement) || 0.01,
+              minPriceIncrementAmount: quotationToNumber(inst.minPriceIncrementAmount) || null,
+              currency: (inst.currency || 'RUB').toUpperCase(),
+              exchange: inst.exchange || 'MOEX',
+              uid: inst.uid,
+              type: 'future',
+              basicAsset: inst.basicAsset || '',
+              expirationDate: inst.expirationDate || null,
+              expTime: expTime,
+              first1minCandleDate: inst.first1minCandleDate || null,
+              first1dayCandleDate: inst.first1dayCandleDate || null,
+              ipoDate: inst.firstTradeDate || null
+            };
+          })
+          .filter(inst => !inst.expTime || inst.expTime >= now - 24 * 3600 * 1000)
+          .sort((a, b) => (a.expTime || Infinity) - (b.expTime || Infinity));
+
+        if (normalized.length > 0) {
+          this.futuresCatalog = normalized;
+          this.futuresCatalogTime = Date.now();
+          console.log(`[TinkoffService] Cached ${normalized.length} MOEX futures from T-Invest API`);
+        }
+
+        return this.futuresCatalog || [];
+      } catch (err) {
+        console.warn('[TinkoffService] Error fetching futures catalog:', err.message);
+        return this.futuresCatalog || [];
+      } finally {
+        this.loadingFuturesPromise = null;
+      }
+    })();
+
+    return await this.loadingFuturesPromise;
   }
 
   /**
    * Search instruments strictly from T-Investments catalog
    */
-  async searchInstruments(query, token) {
+  async searchInstruments(query, token, type = 'all') {
     if (!token || token.length < 10) return [];
 
-    const catalog = await this.getSharesCatalog(token);
+    const normType = (type || 'all').toLowerCase();
+    const loadShares = normType === 'all' || normType === 'shares' || normType === 'share';
+    const loadFutures = normType === 'all' || normType === 'futures' || normType === 'future';
+
+    const [shares, futures] = await Promise.all([
+      loadShares ? this.getSharesCatalog(token) : Promise.resolve([]),
+      loadFutures ? this.getFuturesCatalog(token) : Promise.resolve([])
+    ]);
+
     const q = (query || '').trim().toUpperCase();
 
     if (!q) {
-      // Return top priority MOEX blue chips from live catalog
-      const priorityTickers = [
-        'SBER', 'GAZP', 'LKOH', 'T', 'YNDX', 'ROSN', 'GMKN', 'NVTK', 'MGNT',
-        'VTBR', 'PLZL', 'TATN', 'ALRS', 'MOEX', 'CHMF', 'OZON', 'SNGS', 'AFLT',
-        'NLMK', 'IRAO', 'MTSS', 'MAGN', 'PHOR', 'POSI', 'CBOM', 'PIKK', 'SELG', 'TRNFP'
-      ];
-
-      const topShares = [];
-      for (const ticker of priorityTickers) {
-        const found = catalog.find(i => i.ticker === ticker);
-        if (found) topShares.push(found);
+      if (normType === 'futures' || normType === 'future') {
+        const topFutures = [];
+        const seen = new Set();
+        const priorityRoots = ['IMOEXF', 'NG', 'BR', 'SI', 'RI', 'GD', 'CR', 'SR', 'GZ', 'MX'];
+        for (const root of priorityRoots) {
+          const match = futures.find(f => !seen.has(f.ticker) && (f.ticker.startsWith(root) || f.ticker === root || (f.basicAsset && f.basicAsset.toUpperCase().includes(root))));
+          if (match) {
+            seen.add(match.ticker);
+            topFutures.push(match);
+          }
+        }
+        for (const f of futures) {
+          if (!seen.has(f.ticker)) {
+            topFutures.push(f);
+            seen.add(f.ticker);
+            if (topFutures.length >= 30) break;
+          }
+        }
+        return topFutures;
       }
 
-      // Add other shares from catalog to fill up to 30
-      for (const inst of catalog) {
-        if (!topShares.find(i => i.ticker === inst.ticker)) {
-          topShares.push(inst);
-          if (topShares.length >= 30) break;
+      if (normType === 'shares' || normType === 'share') {
+        const priorityTickers = [
+          'SBER', 'GAZP', 'LKOH', 'T', 'YNDX', 'ROSN', 'GMKN', 'NVTK', 'MGNT',
+          'VTBR', 'PLZL', 'TATN', 'ALRS', 'MOEX', 'CHMF', 'OZON', 'SNGS', 'AFLT',
+          'NLMK', 'IRAO', 'MTSS', 'MAGN', 'PHOR', 'POSI', 'CBOM', 'PIKK', 'SELG', 'TRNFP'
+        ];
+        const topShares = [];
+        for (const ticker of priorityTickers) {
+          const found = shares.find(i => i.ticker === ticker);
+          if (found) topShares.push(found);
+        }
+        for (const inst of shares) {
+          if (!topShares.find(i => i.ticker === inst.ticker)) {
+            topShares.push(inst);
+            if (topShares.length >= 30) break;
+          }
+        }
+        return topShares;
+      }
+
+      // 'all': Mix top shares with liquid futures
+      const priorityTickers = ['SBER', 'GAZP', 'LKOH', 'T', 'ROSN', 'NVTK', 'GMKN', 'VTBR', 'PLZL', 'TATN'];
+      const topAll = [];
+      for (const ticker of priorityTickers) {
+        const found = shares.find(i => i.ticker === ticker);
+        if (found) topAll.push(found);
+      }
+      const priorityRoots = ['IMOEXF', 'NG', 'BR', 'SI', 'RI', 'GD'];
+      for (const root of priorityRoots) {
+        const match = futures.find(f => f.ticker.startsWith(root) || f.ticker === root || (f.basicAsset && f.basicAsset.toUpperCase().includes(root)));
+        if (match && !topAll.find(i => i.ticker === match.ticker)) {
+          topAll.push(match);
         }
       }
-
-      return topShares;
+      for (const inst of shares) {
+        if (!topAll.find(i => i.ticker === inst.ticker)) {
+          topAll.push(inst);
+          if (topAll.length >= 30) break;
+        }
+      }
+      return topAll;
     }
 
-    // Filter by query (exact ticker match first, then startsWith, then name match)
+    // Filter by query (exact ticker match first, then startsWith, then name/asset match)
+    const catalog = [...shares, ...futures];
     const exact = [];
     const starts = [];
     const includes = [];
 
     for (const inst of catalog) {
-      if (inst.ticker === q) {
+      const ticker = inst.ticker || '';
+      const name = (inst.name || '').toUpperCase();
+      const asset = (inst.basicAsset || '').toUpperCase();
+
+      if (ticker === q) {
         exact.push(inst);
-      } else if (inst.ticker.startsWith(q)) {
+      } else if (ticker.startsWith(q)) {
         starts.push(inst);
-      } else if (inst.ticker.includes(q) || (inst.name && inst.name.toUpperCase().includes(q))) {
+      } else if (ticker.includes(q) || name.includes(q) || (asset && asset.includes(q))) {
         includes.push(inst);
       }
     }
 
     const results = [...exact, ...starts, ...includes];
-    return results.slice(0, 30);
+    return results.slice(0, 35);
   }
 
   /**
@@ -226,43 +361,74 @@ class TinkoffService {
     if (!identifier) return null;
     const idUpper = identifier.trim().toUpperCase();
 
-    // 1. Check in-memory catalog
+    // 1. Check in-memory catalogs
     if (this.sharesCatalog) {
       const match = this.sharesCatalog.find(i => i.ticker === idUpper || i.figi === idUpper);
       if (match) return match;
     }
+    if (this.futuresCatalog) {
+      const match = this.futuresCatalog.find(i => i.ticker === idUpper || i.figi === idUpper);
+      if (match) return match;
+    }
 
-    // 2. Load catalog if not yet loaded
+    // 2. Load catalogs if not yet loaded
     if (token) {
-      const catalog = await this.getSharesCatalog(token);
-      const match = catalog.find(i => i.ticker === idUpper || i.figi === idUpper);
+      const [shares, futures] = await Promise.all([
+        this.getSharesCatalog(token),
+        this.getFuturesCatalog(token)
+      ]);
+      const match = shares.find(i => i.ticker === idUpper || i.figi === idUpper)
+        || futures.find(i => i.ticker === idUpper || i.figi === idUpper);
       if (match) return match;
 
       // 3. Fallback to live GetInstrumentBy
       try {
-        const isFigi = idUpper.startsWith('BBG') || idUpper.startsWith('TCS') || idUpper.length >= 12;
-        const res = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/GetInstrumentBy', token, {
-          idType: isFigi ? 'INSTRUMENT_ID_TYPE_FIGI' : 'INSTRUMENT_ID_TYPE_TICKER',
-          classCode: 'TQBR',
-          id: idUpper
-        });
-        if (res.ok) {
+        const isFigi = idUpper.startsWith('BBG') || idUpper.startsWith('TCS') || idUpper.startsWith('FUT') || idUpper.length >= 12;
+        let res;
+        if (isFigi) {
+          res = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/GetInstrumentBy', token, {
+            idType: 'INSTRUMENT_ID_TYPE_FIGI',
+            id: idUpper
+          });
+        } else {
+          // Try TQBR (share) first
+          res = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/GetInstrumentBy', token, {
+            idType: 'INSTRUMENT_ID_TYPE_TICKER',
+            classCode: 'TQBR',
+            id: idUpper
+          });
+          if (!res.ok) {
+            // Try SPBFUT (future)
+            res = await this.post('tinkoff.public.invest.api.contract.v1.InstrumentsService/GetInstrumentBy', token, {
+              idType: 'INSTRUMENT_ID_TYPE_TICKER',
+              classCode: 'SPBFUT',
+              id: idUpper
+            });
+          }
+        }
+
+        if (res && res.ok) {
           const d = await res.json();
           if (d.instrument) {
             const inst = d.instrument;
+            const isFuture = inst.classCode === 'SPBFUT' || (inst.exchange && inst.exchange.toLowerCase().includes('forts'));
             return {
               ticker: (inst.ticker || '').toUpperCase(),
               name: inst.name || inst.ticker,
               figi: inst.figi,
-              classCode: inst.classCode || 'TQBR',
+              classCode: inst.classCode || (isFuture ? 'SPBFUT' : 'TQBR'),
               lot: Number(inst.lot) || 1,
               minPriceIncrement: quotationToNumber(inst.minPriceIncrement) || 0.01,
+              minPriceIncrementAmount: quotationToNumber(inst.minPriceIncrementAmount) || null,
               currency: (inst.currency || 'RUB').toUpperCase(),
               exchange: inst.exchange || 'MOEX',
               uid: inst.uid,
+              type: isFuture ? 'future' : 'share',
+              basicAsset: inst.basicAsset || '',
+              expirationDate: inst.expirationDate || null,
               first1minCandleDate: inst.first1minCandleDate || null,
               first1dayCandleDate: inst.first1dayCandleDate || null,
-              ipoDate: inst.ipoDate || null
+              ipoDate: inst.firstTradeDate || inst.ipoDate || null
             };
           }
         }

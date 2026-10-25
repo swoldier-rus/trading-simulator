@@ -94,6 +94,8 @@ router.get('/candles', async (req, res) => {
         figi,
         lot,
         currency: inst.currency,
+        type: inst.type || 'share',
+        classCode: inst.classCode || 'TQBR',
         interval,
         candles: validCandles
       };
@@ -109,6 +111,8 @@ router.get('/candles', async (req, res) => {
     ticker: inst.ticker,
     figi,
     lot,
+    type: inst.type || 'share',
+    classCode: inst.classCode || 'TQBR',
     interval,
     candles: []
   });

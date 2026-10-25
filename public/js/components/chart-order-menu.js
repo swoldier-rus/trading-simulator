@@ -541,11 +541,13 @@ export class ChartOrderMenuComponent {
       chip.classList.toggle('active', chipLots === this.menuLots);
     });
 
-    const lotSize = this.store.get('currentLotSize');
+    const lotSize = this.store.get('currentLotSize') || 1;
     const totalShares = this.menuLots * lotSize;
     const notional = totalShares * this.menuTargetPrice;
+    const isFuture = this.store.get('currentInstrumentType') === 'future';
+    const unit = isFuture ? 'контр.' : 'шт.';
     if (this.menuSharesInfo) {
-      this.menuSharesInfo.textContent = `${totalShares.toLocaleString('ru-RU')} шт. • ${formatMoney(notional)}`;
+      this.menuSharesInfo.textContent = `${totalShares.toLocaleString('ru-RU')} ${unit} • ${formatMoney(notional)}`;
     }
 
     const simulator = this.store.simulator;
@@ -643,7 +645,8 @@ export class ChartOrderMenuComponent {
       sl: null,
       tp: null,
       time: currentBar.time,
-      lotSize: this.store.get('currentLotSize')
+      lotSize: this.store.get('currentLotSize'),
+      instrumentType: this.store.get('currentInstrumentType') || 'share'
     });
 
     if (res.ok) {

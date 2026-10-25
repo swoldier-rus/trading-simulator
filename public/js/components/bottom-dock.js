@@ -504,11 +504,13 @@ export class BottomDockComponent {
         }
 
         const elLots = tr.querySelector('[data-field="lots"]');
+        const unit = ord.instrumentType === 'future' ? 'контр.' : 'шт.';
         if (elLots && elLots.getAttribute('data-lots-val') !== String(ord.lots)) {
           elLots.setAttribute('data-lots-val', String(ord.lots));
-          elLots.innerHTML = `<strong>${ord.lots}</strong> (${ord.qty} шт.)`;
+          elLots.innerHTML = `<strong>${ord.lots}</strong> (${ord.qty} ${unit})`;
         }
       } else {
+        const unit = ord.instrumentType === 'future' ? 'контр.' : 'шт.';
         tr = document.createElement('tr');
         tr.setAttribute('data-order-id', ord.id);
         tr.innerHTML = `
@@ -516,7 +518,7 @@ export class BottomDockComponent {
           <td data-field="symbol">${symbolHtml}</td>
           <td><span style="font-weight: 600;">${ord.type}</span></td>
           <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'BUY' : 'SELL'}</span></td>
-          <td><span data-field="lots" data-lots-val="${ord.lots}"><strong>${ord.lots}</strong> (${ord.qty} шт.)</span></td>
+          <td><span data-field="lots" data-lots-val="${ord.lots}"><strong>${ord.lots}</strong> (${ord.qty} ${unit})</span></td>
           <td data-field="price"><strong>${ord.price.toFixed(2)} ₽</strong></td>
           <td>SL: ${ord.sl || '—'} / TP: ${ord.tp || '—'}</td>
           <td style="font-size: 11px; color: var(--tv-text-muted);">${formatTimestamp(ord.createdTime)}</td>
@@ -564,10 +566,11 @@ export class BottomDockComponent {
       const symbolHtml = `<span class="table-symbol-link ${isActive ? 'active' : ''}" data-switch-symbol="${tr.symbol}" title="${isActive ? 'Текущий график ' + tr.symbol : 'Открыть график ' + tr.symbol}">${tr.symbol}</span>`;
       const row = document.createElement('tr');
       row.setAttribute('data-trade-id', tr.id);
+      const trUnit = tr.instrumentType === 'future' ? 'контр.' : 'шт.';
       row.innerHTML = `
         <td data-field="symbol">${symbolHtml}</td>
         <td><span class="badge-side ${isLong ? 'long' : 'short'}">${isLong ? 'LONG' : 'SHORT'}</span></td>
-        <td>${tr.lots} (${tr.qty} шт.)</td>
+        <td>${tr.lots} (${tr.qty} ${trUnit})</td>
         <td>${tr.entryPrice.toFixed(2)} ₽</td>
         <td>${tr.exitPrice.toFixed(2)} ₽</td>
         <td class="${pnlClass}"><strong>${tr.pnl >= 0 ? '+' : ''}${tr.pnl.toFixed(2)} ₽</strong></td>
