@@ -180,22 +180,34 @@
   color: #2962ff;
 }
 
-.watchlist-tag {
+/* Instrument Type Badges (Strictly matching Main Toolbar Search) */
+.symbol-badge {
   font-size: 9px;
-  padding: 1px 4px;
+  font-weight: 700;
+  padding: 1px 5px;
   border-radius: 3px;
-  font-weight: 500;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
 
-.watchlist-tag.share {
-  background-color: rgba(41, 98, 255, 0.15);
-  color: #2962ff;
+.symbol-badge-share {
+  background-color: rgba(41, 98, 255, 0.18);
+  color: #538aff;
+  border: 1px solid rgba(41, 98, 255, 0.3);
 }
 
-.watchlist-tag.future {
-  background-color: rgba(242, 54, 69, 0.15);
-  color: #f23645;
+.symbol-badge-future {
+  background-color: rgba(255, 152, 0, 0.18);
+  color: #ffaa2b;
+  border: 1px solid rgba(255, 152, 0, 0.35);
+}
+
+.watchlist-tag {
+  display: none;
 }
 
 .watchlist-row-name {
@@ -519,7 +531,7 @@
 .watchlist-modal-item-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -528,7 +540,7 @@
   font-size: 14px;
   font-weight: 600;
   color: #ffffff;
-  min-width: 80px;
+  min-width: 64px;
 }
 
 .watchlist-modal-name {
@@ -538,25 +550,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
-}
-
-.watchlist-modal-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-.watchlist-modal-badge.share {
-  background-color: rgba(41, 98, 255, 0.2);
-  color: #5b8cff;
-}
-
-.watchlist-modal-badge.future {
-  background-color: rgba(242, 54, 69, 0.2);
-  color: #ff6b78;
+  padding-left: 4px;
 }
 
 /* Right-side Toggle Add/Remove Button */

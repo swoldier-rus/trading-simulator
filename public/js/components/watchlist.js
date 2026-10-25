@@ -289,20 +289,20 @@ export class WatchlistComponent {
       const q = this.quotes.get(ticker) || {};
       const isActive = this.activeTicker && this.activeTicker.toUpperCase() === ticker;
       const type = (q.type || '').toLowerCase();
-      const isFuture = type === 'future' || ticker.length === 4 && /\d$/.test(ticker);
-      const tagClass = isFuture ? 'future' : 'share';
-      const tagText = isFuture ? 'ФЬЮЧ' : 'АКЦИЯ';
+      const isFuture = type === 'future' || (ticker.length === 4 && /\d$/.test(ticker)) || ticker.endsWith('F');
+      const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
+      const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
       const name = q.name || ticker;
       const priceText = this.formatPrice(q.price, ticker);
 
       const chg = Number(q.changePercent || 0);
-      let badgeClass = 'neutral';
+      let badgeClassChange = 'neutral';
       let chgSign = '';
       if (chg > 0) {
-        badgeClass = 'positive';
+        badgeClassChange = 'positive';
         chgSign = '+';
       } else if (chg < 0) {
-        badgeClass = 'negative';
+        badgeClassChange = 'negative';
       }
       const chgText = (q.changePercent !== undefined && q.changePercent !== null)
         ? `${chgSign}${chg.toFixed(2)}%`
@@ -313,13 +313,13 @@ export class WatchlistComponent {
           <div class="watchlist-row-info">
             <div class="watchlist-row-ticker">
               <span>${ticker}</span>
-              <span class="watchlist-tag ${tagClass}">${tagText}</span>
+              <span class="symbol-badge ${badgeClass}">${badgeLabel}</span>
             </div>
             <div class="watchlist-row-name" title="${name}">${name}</div>
           </div>
           <div class="watchlist-row-price" id="wlPrice_${ticker}">${priceText}</div>
           <div class="watchlist-row-change">
-            <span class="watchlist-change-badge ${badgeClass}" id="wlBadge_${ticker}">${chgText}</span>
+            <span class="watchlist-change-badge ${badgeClassChange}" id="wlBadge_${ticker}">${chgText}</span>
           </div>
           <button type="button" class="watchlist-row-delete" data-ticker="${ticker}" title="Удалить из списка (✕)">✕</button>
         </div>
@@ -465,17 +465,17 @@ export class WatchlistComponent {
       this.modalResults.innerHTML = instruments.map(inst => {
         const ticker = (inst.ticker || '').toUpperCase();
         const isInList = this.watchlist.includes(ticker);
-        const isFuture = inst.type === 'future' || inst.classCode === 'SPBFUT';
-        const badgeClass = isFuture ? 'future' : 'share';
-        const badgeText = isFuture ? 'Фьючерс' : 'Акция';
+        const isFuture = inst.type === 'future' || inst.classCode === 'SPBFUT' || (ticker.length === 4 && /\d$/.test(ticker)) || ticker.endsWith('F');
+        const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
+        const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
         const name = inst.name || ticker;
 
         return `
           <div class="watchlist-modal-item" data-ticker="${ticker}">
             <div class="watchlist-modal-item-info">
               <div class="watchlist-modal-ticker">${ticker}</div>
+              <span class="symbol-badge ${badgeClass}">${badgeLabel}</span>
               <div class="watchlist-modal-name" title="${name}">${name}</div>
-              <div class="watchlist-modal-badge ${badgeClass}">${badgeText}</div>
             </div>
             <button type="button" 
                     class="watchlist-modal-toggle-btn ${isInList ? 'added' : ''}" 
