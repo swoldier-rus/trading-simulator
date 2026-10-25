@@ -15,6 +15,8 @@ export class WatchlistComponent {
     this.modalCurrentType = 'all';
     this._searchDebounceTimer = null;
     this._latestSearchToken = 0;
+    this._draggedIndex = null;
+    this._isDragging = false;
 
     // DOM Elements - Panel
     this.panel = document.getElementById('tvWatchlistPanel');
@@ -285,7 +287,7 @@ export class WatchlistComponent {
   renderRowsOnly() {
     if (!this.itemsContainer) return;
 
-    this.itemsContainer.innerHTML = this.watchlist.map(ticker => {
+    this.itemsContainer.innerHTML = this.watchlist.map((ticker, index) => {
       const q = this.quotes.get(ticker) || {};
       const isActive = this.activeTicker && this.activeTicker.toUpperCase() === ticker;
       const type = (q.type || '').toLowerCase();
@@ -293,23 +295,12 @@ export class WatchlistComponent {
       const badgeClass = isFuture ? 'symbol-badge-future' : 'symbol-badge-share';
       const badgeLabel = isFuture ? 'ФЬЮЧЕРС' : 'АКЦИЯ';
       const name = q.name || ticker;
-      const priceText = this.formatPrice(q.price, ticker);
-
-      const chg = Number(q.changePercent || 0);
-      let badgeClassChange = 'neutral';
-      let chgSign = '';
-      if (chg > 0) {
-        badgeClassChange = 'positive';
-        chgSign = '+';
-      } else if (chg < 0) {
-        badgeClassChange = 'negative';
-      }
-      const chgText = (q.changePercent !== undefined && q.changePercent !== null)
-        ? `${chgSign}${chg.toFixed(2)}%`
-        : '—';
 
       return `
-        <div class="watchlist-row ${isActive ? 'active' : ''}" data-ticker="${ticker}">
+        <div class="watchlist-row ${isActive ? 'active' : ''}" 
+             data-ticker="${ticker}" 
+             data-index="${index}" 
+             draggable="true">
           <div class="watchlist-row-info">
             <div class="watchlist-row-ticker">
               <span>${ticker}</span>
@@ -317,19 +308,103 @@ export class WatchlistComponent {
             </div>
             <div class="watchlist-row-name" title="${name}">${name}</div>
           </div>
-          <div class="watchlist-row-price" id="wlPrice_${ticker}">${priceText}</div>
-          <div class="watchlist-row-change">
-            <span class="watchlist-change-badge ${badgeClassChange}" id="wlBadge_${ticker}">${chgText}</span>
-          </div>
           <button type="button" class="watchlist-row-delete" data-ticker="${ticker}" title="Удалить из списка (✕)">✕</button>
         </div>
       `;
     }).join('');
 
-    // Attach row events
-    this.itemsContainer.querySelectorAll('.watchlist-row').forEach(row => {
+    // Attach row drag-and-drop & click events
+    const rows = this.itemsContainer.querySelectorAll('.watchlist-row');
+    rows.forEach(row => {
       const ticker = row.getAttribute('data-ticker');
+
+      // Drag Start
+      row.ondragstart = (e) => {
+        this._draggedIndex = this.watchlist.indexOf(ticker);
+        this._isDragging = true;
+        row.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', ticker);
+        }
+      };
+
+      // Drag Over
+      row.ondragover = (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'move';
+        }
+
+        const targetIndex = this.watchlist.indexOf(ticker);
+        if (targetIndex === -1 || targetIndex === this._draggedIndex) {
+          row.classList.remove('drop-above', 'drop-below');
+          return;
+        }
+
+        const rect = row.getBoundingClientRect();
+        const offset = e.clientY - rect.top;
+        const isTopHalf = offset < rect.height / 2;
+
+        if (isTopHalf) {
+          row.classList.add('drop-above');
+          row.classList.remove('drop-below');
+        } else {
+          row.classList.add('drop-below');
+          row.classList.remove('drop-above');
+        }
+      };
+
+      // Drag Leave
+      row.ondragleave = (e) => {
+        if (!row.contains(e.relatedTarget)) {
+          row.classList.remove('drop-above', 'drop-below');
+        }
+      };
+
+      // Drop
+      row.ondrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        row.classList.remove('drop-above', 'drop-below');
+
+        const fromIndex = this._draggedIndex;
+        const toIndex = this.watchlist.indexOf(ticker);
+
+        if (fromIndex !== null && fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+          const rect = row.getBoundingClientRect();
+          const offset = e.clientY - rect.top;
+          const isTopHalf = offset < rect.height / 2;
+
+          let insertIndex = isTopHalf ? toIndex : toIndex + 1;
+          if (fromIndex < insertIndex) {
+            insertIndex--;
+          }
+
+          const [movedItem] = this.watchlist.splice(fromIndex, 1);
+          this.watchlist.splice(insertIndex, 0, movedItem);
+
+          this.saveWatchlist();
+          this.renderRowsOnly();
+        }
+      };
+
+      // Drag End
+      row.ondragend = () => {
+        row.classList.remove('dragging');
+        this.itemsContainer.querySelectorAll('.watchlist-row').forEach(r => {
+          r.classList.remove('drop-above', 'drop-below', 'dragging');
+        });
+        this._draggedIndex = null;
+        setTimeout(() => {
+          this._isDragging = false;
+        }, 80);
+      };
+
+      // Row Click (Switch Symbol)
       row.onclick = (e) => {
+        if (this._isDragging) return;
         if (e.target.closest('.watchlist-row-delete')) return;
         this.selectSymbol(ticker);
       };
@@ -392,14 +467,7 @@ export class WatchlistComponent {
     if (!currentPrice || isNaN(currentPrice)) return;
 
     const quote = this.quotes.get(ticker) || { ticker };
-    const prevPrice = quote.price || currentPrice;
     quote.price = currentPrice;
-
-    // Recalculate change percent if available
-    const elPrice = document.getElementById(`wlPrice_${ticker}`);
-    if (elPrice) {
-      elPrice.textContent = this.formatPrice(currentPrice, ticker);
-    }
   }
 
   toggleTicker(ticker, instData = null) {

@@ -103,17 +103,6 @@
   text-align: left;
 }
 
-.watchlist-table-head .col-price {
-  width: 80px;
-  text-align: right;
-  padding-right: 8px;
-}
-
-.watchlist-table-head .col-change {
-  width: 72px;
-  text-align: right;
-}
-
 /* Body Scroll */
 .watchlist-body-scroll {
   flex: 1;
@@ -144,10 +133,48 @@
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  cursor: pointer;
+  cursor: grab;
   border-left: 3px solid transparent;
-  transition: background-color 0.12s ease, border-color 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
   position: relative;
+  user-select: none;
+}
+
+.watchlist-row:active,
+.watchlist-row.grabbing {
+  cursor: grabbing;
+}
+
+.watchlist-row.dragging {
+  opacity: 0.35;
+  background-color: #262b3d;
+}
+
+/* Drag Drop Indicators */
+.watchlist-row.drop-above::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #2962ff;
+  box-shadow: 0 0 4px rgba(41, 98, 255, 0.8);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.watchlist-row.drop-below::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #2962ff;
+  box-shadow: 0 0 4px rgba(41, 98, 255, 0.8);
+  z-index: 10;
+  pointer-events: none;
 }
 
 .watchlist-row:hover {
@@ -216,48 +243,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 6px;
-}
-
-.watchlist-row-price {
-  width: 80px;
-  text-align: right;
-  font-size: 13px;
-  font-weight: 500;
-  color: #d1d4dc;
-  font-variant-numeric: tabular-nums;
-  padding-right: 8px;
-}
-
-.watchlist-row-change {
-  width: 72px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.watchlist-change-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  display: inline-block;
-}
-
-.watchlist-change-badge.positive {
-  background-color: rgba(8, 153, 129, 0.16);
-  color: #089981;
-}
-
-.watchlist-change-badge.negative {
-  background-color: rgba(242, 54, 69, 0.16);
-  color: #f23645;
-}
-
-.watchlist-change-badge.neutral {
-  background-color: #2a2e39;
-  color: #787b86;
+  padding-right: 28px;
 }
 
 /* Quick Delete Action Button on hover */
