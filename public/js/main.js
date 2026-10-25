@@ -374,6 +374,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         data = await marketDataService.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200);
       }
 
+      // Robust fallback: if querying targetBarTime returned 0 candles (e.g. instrument did not exist at targetBarTime),
+      // gracefully fallback to loading the available history instead of aborting and leaving the chart frozen!
+      if (targetBarTime && (!data || !data.candles || data.candles.length === 0)) {
+        console.warn(`[Pipeline] No candles found at target time ${targetBarTime} for ${currentSymbol}, falling back to latest history...`);
+        data = await marketDataService.getCandles(currentSymbol, currentFigi, currentTimeframe, 1200);
+        preserveReplay = false;
+        targetBarTime = null;
+      }
+
       if (data && data.candles && data.candles.length > 0) {
         if (data.type) {
           store.set('currentInstrumentType', data.type);
@@ -483,7 +492,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       if (simTime) {
-        // Replay is active: preserve exact simulation time across ticker switch!
+        // Check if new instrument has historical boundaries and if simTime is before its creation
+        const figi = store.get('currentFigi');
+        const tf = store.get('currentTimeframe');
+        const boundaries = await marketDataService.getBoundaries(ticker, figi, tf);
+        if (boundaries && boundaries.ok && boundaries.earliestTimeSec && simTime < boundaries.earliestTimeSec) {
+          showToast(`Инструмент ${ticker} торгуется с ${new Date(boundaries.earliestTimeSec * 1000).toLocaleDateString('ru-RU')}. Переход к началу истории.`, 'info');
+          simTime = boundaries.earliestTimeSec;
+        }
+
+        // Replay is active: preserve simulation time across ticker switch!
         await loadCandles(simTime, true, { showLoading: true, fullReset: true, isSymbolChange: true });
         eventBus.emit('replay:scrubbed');
       } else {

@@ -6,6 +6,8 @@ export class ToolbarComponent {
   constructor(store) {
     this.store = store;
     this.currentSymbolTab = 'all';
+    this._searchDebounceTimer = null;
+    this._latestSearchToken = 0;
 
     // DOM Elements
     this.symbolTrigger = document.getElementById('symbolTrigger');
@@ -77,7 +79,12 @@ export class ToolbarComponent {
 
     if (this.symbolSearchInput) {
       this.symbolSearchInput.oninput = (e) => {
-        this.populateSymbolList(e.target.value);
+        if (this._searchDebounceTimer) clearTimeout(this._searchDebounceTimer);
+        const query = e.target.value;
+        this._searchDebounceTimer = setTimeout(() => {
+          this._searchDebounceTimer = null;
+          this.populateSymbolList(query);
+        }, 120);
       };
     }
 
@@ -86,6 +93,10 @@ export class ToolbarComponent {
     tabs.forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
+        if (this._searchDebounceTimer) {
+          clearTimeout(this._searchDebounceTimer);
+          this._searchDebounceTimer = null;
+        }
         tabs.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.currentSymbolTab = btn.getAttribute('data-type') || 'all';
@@ -96,8 +107,11 @@ export class ToolbarComponent {
 
   async populateSymbolList(query) {
     if (!this.symbolList) return;
+    const searchToken = ++this._latestSearchToken;
     try {
       const res = await API.searchInstruments(query, this.currentSymbolTab);
+      if (searchToken !== this._latestSearchToken) return;
+
       const instruments = res.instruments || [];
       const currentSym = this.store.get('currentSymbol');
 

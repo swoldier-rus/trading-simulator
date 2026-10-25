@@ -23,8 +23,9 @@ router.get('/candles', async (req, res) => {
     });
   }
 
-  // Resolve instrument and lot strictly from T-Investments API
-  const inst = await tinkoffService.findInstrumentByTickerOrFigi(figi || ticker, token);
+  // Resolve instrument and lot strictly from T-Investments API (prioritize ticker to prevent stale figi mismatches)
+  const inst = (ticker ? await tinkoffService.findInstrumentByTickerOrFigi(ticker, token) : null)
+    || (figi ? await tinkoffService.findInstrumentByTickerOrFigi(figi, token) : null);
   if (!inst) {
     return res.status(404).json({
       ok: false,

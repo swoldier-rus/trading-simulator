@@ -40,7 +40,8 @@ router.get('/instruments/boundaries', async (req, res) => {
     });
   }
 
-  const inst = await tinkoffService.findInstrumentByTickerOrFigi(figi || ticker, token);
+  const inst = (ticker ? await tinkoffService.findInstrumentByTickerOrFigi(ticker, token) : null)
+    || (figi ? await tinkoffService.findInstrumentByTickerOrFigi(figi, token) : null);
   if (!inst) {
     return res.status(404).json({
       ok: false,

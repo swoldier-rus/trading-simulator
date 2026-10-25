@@ -246,7 +246,8 @@ export class ChartZoomController {
     const ts = chart._timeScale || (typeof chart.timeScale === 'function' ? chart.timeScale() : chart.timeScale);
     if (!ts) return;
 
-    const pane = Array.isArray(chart._panes) ? chart._panes[0] : null;
+    const panes = typeof chart.panes === 'function' ? chart.panes() : (Array.isArray(chart._panes) ? chart._panes : (chart._panes?.values ? Array.from(chart._panes.values()) : []));
+    const pane = panes[0] || null;
     const scales = pane && typeof pane.scales === 'function' ? pane.scales() : [];
     const scale = scales[0] || null;
 
@@ -335,7 +336,8 @@ export class ChartZoomController {
     if (!prev) return;
 
     const ts = chart._timeScale || (typeof chart.timeScale === 'function' ? chart.timeScale() : chart.timeScale);
-    const pane = Array.isArray(chart._panes) ? chart._panes[0] : null;
+    const panes = typeof chart.panes === 'function' ? chart.panes() : (Array.isArray(chart._panes) ? chart._panes : (chart._panes?.values ? Array.from(chart._panes.values()) : []));
+    const pane = panes[0] || null;
     const scales = pane && typeof pane.scales === 'function' ? pane.scales() : [];
     const scale = scales[0] || null;
 

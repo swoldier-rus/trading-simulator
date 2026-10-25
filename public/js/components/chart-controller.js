@@ -370,6 +370,17 @@ export class ChartControllerComponent {
   }
 
   /**
+   * Helper: Retrieve all chart panes reliably across OpenAlgoCharts versions
+   */
+  _getPanes() {
+    if (!this.chart) return [];
+    if (typeof this.chart.panes === 'function') return this.chart.panes();
+    if (Array.isArray(this.chart._panes)) return this.chart._panes;
+    if (this.chart._panes?.values) return Array.from(this.chart._panes.values());
+    return [];
+  }
+
+  /**
    * Reset chart vertical price scale state (autoscale on, ratio locks off)
    * while strictly preserving current horizontal zoom (barSpacing) and
    * aligning the selected candle with a standard TradingView right-edge offset.
@@ -380,17 +391,20 @@ export class ChartControllerComponent {
     const preservedSpacing = ts ? ts.barSpacing : null;
 
     // 1. Reset vertical price scales to AutoScale and clear manual stretch/ratio locks
-    if (Array.isArray(this.chart._panes)) {
-      for (const pane of this.chart._panes) {
-        if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
-        const scales = typeof pane.scales === 'function' ? pane.scales() : [];
-        for (const scale of scales) {
-          if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
-        }
+    const panes = this._getPanes();
+    for (const pane of panes) {
+      if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
+      const scales = typeof pane.scales === 'function' ? pane.scales() : [];
+      for (const scale of scales) {
+        if (typeof scale.clearOwnedFixedRange === 'function') scale.clearOwnedFixedRange();
+        if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
       }
     }
     if (typeof this.chart.setAutoScale === 'function') {
       this.chart.setAutoScale(true);
+    }
+    if (typeof this.chart.resetScale === 'function') {
+      this.chart.resetScale();
     }
 
     // 2. Position selected candle at right with TradingView offset, preserving horizontal zoom
@@ -426,18 +440,24 @@ export class ChartControllerComponent {
     if (!this.chart) return;
     const ts = this.chart._timeScale || (typeof this.chart.timeScale === 'function' ? this.chart.timeScale() : this.chart.timeScale);
 
-    // 1. Reset vertical price scales to AutoScale and clear manual stretch/ratio locks
-    if (Array.isArray(this.chart._panes)) {
-      for (const pane of this.chart._panes) {
-        if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
-        const scales = typeof pane.scales === 'function' ? pane.scales() : [];
-        for (const scale of scales) {
-          if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
-        }
+    // 1. Reset vertical price scales to AutoScale, clear ratio locks and fixed range locks
+    const panes = this._getPanes();
+    for (const pane of panes) {
+      if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
+      const scales = typeof pane.scales === 'function' ? pane.scales() : [];
+      for (const scale of scales) {
+        if (typeof scale.clearOwnedFixedRange === 'function') scale.clearOwnedFixedRange();
+        if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
       }
     }
     if (typeof this.chart.setAutoScale === 'function') {
       this.chart.setAutoScale(true);
+    }
+    if (typeof this.chart.resetScale === 'function') {
+      this.chart.resetScale();
+    }
+    if (typeof this.chart.fitContent === 'function') {
+      this.chart.fitContent();
     }
 
     // 2. Position latest candle at right with TradingView offset (12 bars) and standard zoom (~7.5 px)
@@ -481,17 +501,23 @@ export class ChartControllerComponent {
 
   resetPriceScale() {
     if (!this.chart) return;
-    if (Array.isArray(this.chart._panes)) {
-      for (const pane of this.chart._panes) {
-        if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
-        const scales = typeof pane.scales === 'function' ? pane.scales() : [];
-        for (const scale of scales) {
-          if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
-        }
+    const panes = this._getPanes();
+    for (const pane of panes) {
+      if (typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
+      const scales = typeof pane.scales === 'function' ? pane.scales() : [];
+      for (const scale of scales) {
+        if (typeof scale.clearOwnedFixedRange === 'function') scale.clearOwnedFixedRange();
+        if (typeof scale.setAutoScale === 'function') scale.setAutoScale(true);
       }
     }
     if (typeof this.chart.setAutoScale === 'function') {
       this.chart.setAutoScale(true);
+    }
+    if (typeof this.chart.resetScale === 'function') {
+      this.chart.resetScale();
+    }
+    if (typeof this.chart.fitContent === 'function') {
+      this.chart.fitContent();
     }
     if (typeof this.chart.invalidate === 'function') {
       this.chart.invalidate(e => e.invalidateGlobal(3));
@@ -502,8 +528,9 @@ export class ChartControllerComponent {
 
   isPriceAutoScaleEnabled() {
     if (!this.chart) return true;
-    if (Array.isArray(this.chart._panes) && this.chart._panes[0]) {
-      const scales = typeof this.chart._panes[0].scales === 'function' ? this.chart._panes[0].scales() : [];
+    const panes = this._getPanes();
+    if (panes[0]) {
+      const scales = typeof panes[0].scales === 'function' ? panes[0].scales() : [];
       if (scales[0] && typeof scales[0].autoScale === 'function') {
         return scales[0].autoScale();
       }
@@ -518,13 +545,13 @@ export class ChartControllerComponent {
     if (!this.chart) return true;
     const current = this.isPriceAutoScaleEnabled();
     const next = !current;
-    if (Array.isArray(this.chart._panes)) {
-      for (const pane of this.chart._panes) {
-        if (next && typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
-        const scales = typeof pane.scales === 'function' ? pane.scales() : [];
-        for (const scale of scales) {
-          if (typeof scale.setAutoScale === 'function') scale.setAutoScale(next);
-        }
+    const panes = this._getPanes();
+    for (const pane of panes) {
+      if (next && typeof pane.clearRatioLocks === 'function') pane.clearRatioLocks();
+      const scales = typeof pane.scales === 'function' ? pane.scales() : [];
+      for (const scale of scales) {
+        if (next && typeof scale.clearOwnedFixedRange === 'function') scale.clearOwnedFixedRange();
+        if (typeof scale.setAutoScale === 'function') scale.setAutoScale(next);
       }
     }
     if (typeof this.chart.setAutoScale === 'function') {
