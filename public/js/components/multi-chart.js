@@ -342,7 +342,17 @@ export class ChartSlot {
   async loadData() {
     if (!this.mainSeries) return;
     try {
-      const res = await marketDataService.getCandles(this.symbol, this.figi, this.timeframe, 1200, null, null, { silent: true });
+      let toSec = null;
+      if (this.manager.isReplayActive()) {
+        const simTime = this.manager.getCurrentSimulationTime();
+        if (simTime) {
+          const step = timeframeToSeconds(this.timeframe);
+          const nowSec = Math.floor(Date.now() / 1000);
+          const forwardSec = Math.max(350 * step, 7 * 86400);
+          toSec = Math.min(nowSec, simTime + forwardSec);
+        }
+      }
+      const res = await marketDataService.getCandles(this.symbol, this.figi, this.timeframe, 1200, toSec, null, { silent: true });
       if (res && res.candles && res.candles.length > 0) {
         this.allCandles = res.candles;
         this.candlesCount = res.candles.length;
@@ -353,6 +363,7 @@ export class ChartSlot {
           const simTime = this.manager.getCurrentSimulationTime();
           if (simTime) {
             this.syncToReplayTime(simTime, null, false);
+            this.resetView();
           } else {
             this.currentVisibleCandles = [...this.allCandles];
             this.mainSeries.setData(this.allCandles);
@@ -361,9 +372,7 @@ export class ChartSlot {
           this.slotEl.classList.remove('in-replay');
           this.currentVisibleCandles = [...this.allCandles];
           this.mainSeries.setData(this.allCandles);
-          if (this.chart) {
-            this.chart.fitContent();
-          }
+          this.resetView();
         }
       }
     } catch (err) {
@@ -371,6 +380,41 @@ export class ChartSlot {
     }
   }
 
+  async ensureHistoryAround(targetTime) {
+    if (this._isLoadingHistory || !targetTime || this._lastAttemptedTargetTime === targetTime) return;
+    this._isLoadingHistory = true;
+    this._lastAttemptedTargetTime = targetTime;
+    try {
+      const step = timeframeToSeconds(this.timeframe);
+      const nowSec = Math.floor(Date.now() / 1000);
+      const forwardSec = Math.max(350 * step, 7 * 86400);
+      const toSec = Math.min(nowSec, targetTime + forwardSec);
+
+      const res = await marketDataService.getCandles(
+        this.symbol,
+        this.figi,
+        this.timeframe,
+        1200,
+        toSec,
+        null,
+        { silent: true }
+      );
+
+      if (res && res.candles && res.candles.length > 0) {
+        this.allCandles = res.candles;
+        this.candlesCount = res.candles.length;
+        const currentSimTime = this.manager.getCurrentSimulationTime() || targetTime;
+        this.syncToReplayTime(currentSimTime, null, false);
+        this.resetView();
+      }
+    } catch (e) {
+      console.warn(`[ChartSlot ${this.id}] ensureHistoryAround error:`, e);
+    } finally {
+      this._isLoadingHistory = false;
+    }
+  }
+
+  // Backward infinite scrolling loader (when user pans chart to the past)
   async ensureHistoryBefore(targetTime) {
     if (this._isLoadingHistory || !this.allCandles || this.allCandles.length === 0) return;
     this._isLoadingHistory = true;
@@ -408,10 +452,22 @@ export class ChartSlot {
 
   // MTF Replay Synchronizer: Slices history and synthesizes forming bar without lookahead bias
   syncToReplayTime(simTime, currentTickPrice = null, isIncremental = false) {
-    if (!this.mainSeries || !this.allCandles || this.allCandles.length === 0) return;
+    if (!this.mainSeries) return;
     if (!simTime) return;
 
     this.slotEl.classList.add('in-replay');
+
+    if (!this.allCandles || this.allCandles.length === 0) {
+      this.ensureHistoryAround(simTime);
+      return;
+    }
+
+    const oldestTime = this.allCandles[0].time;
+    const newestTime = this.allCandles[this.allCandles.length - 1].time;
+    if (simTime < oldestTime || simTime > newestTime) {
+      this.ensureHistoryAround(simTime);
+      return;
+    }
 
     const tfSlot = (this.timeframe || '1d').toLowerCase();
     const tfSim = (this.store.get('currentTimeframe') || '1h').toLowerCase();
@@ -422,11 +478,7 @@ export class ChartSlot {
     if (stepSlot > stepSim) {
       const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
       if (floorIdx < 0) {
-        if (this.allCandles.length > 0 && simTime < this.allCandles[0].time) {
-          this.ensureHistoryBefore(simTime);
-          return;
-        }
-        this._applyVisibleCandles([], isIncremental);
+        this.ensureHistoryAround(simTime);
         return;
       }
 
@@ -503,11 +555,7 @@ export class ChartSlot {
       // EQUAL OR LOWER TIMEFRAME (e.g. Slot is 15M / 1H, Sim is 1H / 1D)
       const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
       if (floorIdx < 0) {
-        if (this.allCandles.length > 0 && simTime < this.allCandles[0].time) {
-          this.ensureHistoryBefore(simTime);
-          return;
-        }
-        this._applyVisibleCandles([], isIncremental);
+        this.ensureHistoryAround(simTime);
         return;
       }
 
@@ -570,6 +618,9 @@ export class ChartSlot {
     this.currentVisibleCandles = newVisible;
     if (this.mainSeries) {
       this.mainSeries.setData(newVisible);
+      if (prevLen === 0) {
+        this.resetView();
+      }
     }
 
     // If this slot is focused, keep Quick Trade widget price synced with visible candle
@@ -578,18 +629,43 @@ export class ChartSlot {
     }
   }
 
+  // Auto-scale price axis and scroll time scale to latest bar with TradingView 12-bar right offset
+  resetView() {
+    if (!this.chart) return;
+    try {
+      if (typeof this.chart.setAutoScale === 'function') {
+        this.chart.setAutoScale(true);
+      }
+      if (typeof this.chart.fitContent === 'function') {
+        this.chart.fitContent();
+      }
+      const ts = this.chart._timeScale || (typeof this.chart.timeScale === 'function' ? this.chart.timeScale() : this.chart.timeScale);
+      if (ts) {
+        if (typeof ts.setRightOffset === 'function') ts.setRightOffset(12);
+        if (typeof ts.setBarSpacing === 'function') ts.setBarSpacing(7.5);
+      }
+    } catch (e) {}
+  }
+
   // Restore full dataset on replay exit
   restoreFullData() {
     this.slotEl.classList.remove('in-replay');
-    if (this.mainSeries && this.allCandles && this.allCandles.length > 0) {
+    this._lastAttemptedTargetTime = null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const lastTime = (this.allCandles && this.allCandles.length > 0) ? this.allCandles[this.allCandles.length - 1].time : 0;
+    if (nowSec - lastTime > 7 * 86400) {
+      this.loadData();
+    } else if (this.mainSeries && this.allCandles && this.allCandles.length > 0) {
       this.currentVisibleCandles = [...this.allCandles];
       this.mainSeries.setData(this.allCandles);
+      this.resetView();
     }
   }
 
   setSymbol(symbol, figi = '') {
     this.symbol = symbol;
     this.figi = figi;
+    this._lastAttemptedTargetTime = null;
     this.updateBadge();
     this.loadData();
     if (this.manager.drawingLinkGroup && this.chart) {
@@ -603,6 +679,7 @@ export class ChartSlot {
   setTimeframe(newTf) {
     if (!newTf || newTf === this.timeframe) return;
     this.timeframe = newTf;
+    this._lastAttemptedTargetTime = null;
     this.updateBadge();
     this.loadData();
     if (this.manager.activeSlotId === this.id) {
@@ -1159,14 +1236,15 @@ export class MultiChartLayoutManager {
         const tf = savedConfig?.timeframe || (defaultTfs[id % defaultTfs.length] !== currentTf
           ? defaultTfs[id % defaultTfs.length]
           : '1d');
-        const sym = savedConfig?.symbol || currentSymbol;
+        const sym = this.syncSymbol ? currentSymbol : (savedConfig?.symbol || currentSymbol);
+        const fig = this.syncSymbol ? currentFigi : (savedConfig?.figi || currentFigi);
 
         const slot = new ChartSlot({
           id,
           manager: this,
           store: this.store,
           symbol: sym,
-          figi: currentFigi,
+          figi: fig,
           timeframe: tf
         });
 
