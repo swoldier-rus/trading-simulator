@@ -126,6 +126,7 @@ class SessionPersistenceService {
         drawings,
         drawingsBySymbol
       },
+      multiChart: this.store.multiChart ? this.store.multiChart.exportState() : null,
       ui: {
         showExecutionsOnChart: this.store.get('showExecutionsOnChart') !== false,
         showSessionBreaks: this.store.get('showSessionBreaks') !== false,
@@ -301,6 +302,11 @@ class SessionPersistenceService {
       }
       if (this.store.tradeLinesOverlay) {
         this.store.tradeLinesOverlay.scheduleRender();
+      }
+
+      // 8. Multi-chart layout and slots restoration
+      if (saved.multiChart && this.store.multiChart) {
+        this.store.multiChart.restoreState(saved.multiChart);
       }
 
       return true;

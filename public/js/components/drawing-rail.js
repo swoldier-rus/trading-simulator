@@ -37,7 +37,10 @@ export class DrawingRailComponent {
 
     if (this.toolClearDrawings) {
       this.toolClearDrawings.onclick = () => {
-        if (this.store.drawingController) {
+        if (this.store.multiChart) {
+          this.store.multiChart.clearAllDrawings();
+          showToast('Все графические элементы очищены', 'info');
+        } else if (this.store.drawingController) {
           const allDrawings = this.store.drawingController.drawings();
           if (allDrawings && allDrawings.length > 0) {
             this.store.drawingController.removeMany(allDrawings.map(d => d.id));
@@ -153,25 +156,32 @@ export class DrawingRailComponent {
       this.store.zoomController.deactivateTool();
     }
 
-    if (!this.store.drawingController) return;
-
-    if (tool === 'cursor') {
-      if (this.store.drawingController.activeTool() !== null) {
-        this.store.drawingController.setTool(null);
-      }
-    } else {
-      if (this.store.floatingDrawingToolbar) {
-        const def = this.store.floatingDrawingToolbar.getDefaultStyle(tool);
-        this.store.drawingController.setOptions({ defaultStyle: def });
-      }
-      if (this.store.drawingController.activeTool() !== tool) {
-        this.store.drawingController.setTool(tool);
+    if (this.store.multiChart) {
+      this.store.multiChart.setDrawingTool(tool);
+    } else if (this.store.drawingController) {
+      if (tool === 'cursor') {
+        if (this.store.drawingController.activeTool() !== null) {
+          this.store.drawingController.setTool(null);
+        }
+      } else {
+        if (this.store.floatingDrawingToolbar) {
+          const def = this.store.floatingDrawingToolbar.getDefaultStyle(tool);
+          this.store.drawingController.setOptions({ defaultStyle: def });
+        }
+        if (this.store.drawingController.activeTool() !== tool) {
+          this.store.drawingController.setTool(tool);
+        }
       }
     }
   }
 
   resetToCursor() {
     this.highlightTool('cursor');
+    if (this.store.multiChart) {
+      this.store.multiChart.setDrawingTool('cursor');
+    } else if (this.store.drawingController && this.store.drawingController.activeTool() !== null) {
+      this.store.drawingController.setTool(null);
+    }
     if (this.store.zoomController && this.store.zoomController.isToolActive) {
       this.store.zoomController.deactivateTool();
     }
