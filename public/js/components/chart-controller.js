@@ -113,6 +113,23 @@ export class ChartControllerComponent {
           const dc = this.store.drawingController;
           if (!dc || !dc.activeTool()) {
             if (e) e.handled = true;
+            // Double-clicking on indicator pane opens its settings dialog
+            if (e && Number.isFinite(e.paneIndex) && e.paneIndex > 0) {
+              const inds = typeof this.chart.indicators === 'function' ? this.chart.indicators() : (this.chart._indicators || []);
+              const handle = inds.find(i => i.paneIndex === e.paneIndex);
+              if (handle) {
+                eventBus.emit('indicator:openSettings', { handle, indicatorId: handle.indicatorId });
+              }
+            }
+          }
+        });
+
+        // Open settings modal when gear icon in chart indicator legend is clicked
+        this.chart.on('indicatorSettings', ({ instanceId, indicatorId, paneIndex }) => {
+          const inds = typeof this.chart.indicators === 'function' ? this.chart.indicators() : (this.chart._indicators || []);
+          const handle = (instanceId ? inds.find(i => i.id === instanceId) : null) || inds.find(i => i.indicatorId === indicatorId);
+          if (handle) {
+            eventBus.emit('indicator:openSettings', { handle, indicatorId: handle.indicatorId || indicatorId });
           }
         });
       }

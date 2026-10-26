@@ -170,7 +170,17 @@ export class ModalsComponent {
             <span class="indicator-name">${ind.name || ind.id.toUpperCase()}</span>
             <span class="indicator-desc">${ind.category || 'Технический анализ'} (${placementDesc})</span>
           </div>
-          <input type="checkbox" class="indicator-toggle" ${isActive ? 'checked' : ''}>
+          <div class="indicator-actions">
+            ${isActive ? `
+              <button type="button" class="indicator-gear-btn" data-ind-id="${ind.id}" title="Настройки индикатора">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </button>
+            ` : ''}
+            <input type="checkbox" class="indicator-toggle" ${isActive ? 'checked' : ''}>
+          </div>
         </div>
       `;
     }).join('');
@@ -178,7 +188,20 @@ export class ModalsComponent {
     this.indicatorListContainer.querySelectorAll('.indicator-item').forEach(item => {
       item.onclick = (e) => {
         const id = item.getAttribute('data-ind-id');
+
+        // Check if gear icon was clicked
+        const gearBtn = e.target.closest('.indicator-gear-btn');
+        if (gearBtn) {
+          e.stopPropagation();
+          const handle = this.activeIndicators.get(id);
+          if (handle) {
+            eventBus.emit('indicator:openSettings', { handle, indicatorId: id });
+          }
+          return;
+        }
+
         const checkbox = item.querySelector('.indicator-toggle');
+        const actionsWrap = item.querySelector('.indicator-actions');
 
         if (e.target !== checkbox) {
           checkbox.checked = !checkbox.checked;
@@ -197,7 +220,36 @@ export class ModalsComponent {
               handle = chart.addIndicator(id);
               this.activeIndicators.set(id, handle);
             }
+
+            // Restore saved settings from localStorage if available
+            try {
+              const modalComp = this.store.indicatorSettingsModal;
+              const saved = modalComp ? modalComp.getSavedSettings(id) : null;
+              if (saved && handle && typeof handle.setSettings === 'function') {
+                handle.setSettings(saved);
+              }
+            } catch (err) {
+              console.warn('[Modals] Failed to restore indicator settings:', err);
+            }
+
             item.classList.add('active');
+
+            // Add gear icon dynamically next to checkbox
+            if (actionsWrap && !actionsWrap.querySelector('.indicator-gear-btn')) {
+              const gear = document.createElement('button');
+              gear.type = 'button';
+              gear.className = 'indicator-gear-btn';
+              gear.dataset.indId = id;
+              gear.title = 'Настройки индикатора';
+              gear.innerHTML = `
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              `;
+              actionsWrap.insertBefore(gear, checkbox);
+            }
+
             if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
               this.store.chartController.syncIndicatorLegendOffset();
             }
@@ -224,6 +276,9 @@ export class ModalsComponent {
               }
             }
             item.classList.remove('active');
+            const gear = item.querySelector('.indicator-gear-btn');
+            if (gear) gear.remove();
+
             if (this.store.chartController && typeof this.store.chartController.syncIndicatorLegendOffset === 'function') {
               this.store.chartController.syncIndicatorLegendOffset();
             }

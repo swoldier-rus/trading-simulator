@@ -1,0 +1,405 @@
+/* indicator-settings-modal.css - TradingView-style Technical Indicator Settings Dialog */
+
+.indicator-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.indicator-settings-dialog {
+  background-color: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 8px;
+  width: 460px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+  animation: indModalFadeIn 0.15s ease-out;
+}
+
+@keyframes indModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.indicator-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #2a2e39;
+  background: #1e222d;
+}
+
+.indicator-settings-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #d1d4dc;
+}
+
+.indicator-settings-title-group svg {
+  color: var(--tv-accent, #2962ff);
+  flex-shrink: 0;
+}
+
+.indicator-settings-close-btn {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.indicator-settings-close-btn:hover {
+  color: #ffffff;
+  background-color: #2a2e39;
+}
+
+/* Tabs */
+.indicator-settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 18px;
+  border-bottom: 1px solid #2a2e39;
+  background: #181b22;
+}
+
+.indicator-settings-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #787b86;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.indicator-settings-tab:hover {
+  color: #d1d4dc;
+}
+
+.indicator-settings-tab.active {
+  color: var(--tv-accent, #2962ff);
+  border-bottom-color: var(--tv-accent, #2962ff);
+}
+
+/* Body & Content */
+.indicator-settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
+  min-height: 160px;
+  max-height: 60vh;
+}
+
+.indicator-settings-tab-pane {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.indicator-settings-tab-pane.active {
+  display: flex;
+}
+
+.indicator-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ind-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 34px;
+}
+
+.ind-setting-label {
+  font-size: 13px;
+  color: #d1d4dc;
+  flex: 1;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ind-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Controls */
+.ind-number-input {
+  background-color: #131722;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 6px 10px;
+  width: 90px;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ind-number-input:focus {
+  border-color: var(--tv-accent, #2962ff);
+}
+
+.ind-select {
+  background-color: #131722;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 140px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.ind-select:focus {
+  border-color: var(--tv-accent, #2962ff);
+}
+
+.ind-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 32px;
+}
+
+.ind-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--tv-accent, #2962ff);
+  cursor: pointer;
+  margin: 0;
+}
+
+.ind-checkbox-label {
+  font-size: 13px;
+  color: #d1d4dc;
+}
+
+/* Color Picker */
+.ind-color-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #131722;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.ind-color-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+}
+
+.ind-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.ind-color-input::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.ind-color-hex {
+  font-size: 11px;
+  font-family: monospace;
+  color: #787b86;
+  text-transform: uppercase;
+}
+
+/* Plot Style Controls */
+.ind-plot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #181b22;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+}
+
+.ind-plot-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d4dc;
+  flex: 1;
+}
+
+.ind-plot-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ind-width-select {
+  background-color: #131722;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  width: 76px;
+}
+
+.ind-style-select {
+  background-color: #131722;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  min-width: 90px;
+}
+
+/* Empty message */
+.ind-empty-message {
+  color: #787b86;
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* Footer */
+.indicator-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid #2a2e39;
+  background: #181b22;
+}
+
+.indicator-settings-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-ind-default {
+  background: transparent;
+  border: 1px solid #363a45;
+  color: #787b86;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-ind-default:hover {
+  border-color: #787b86;
+  color: #d1d4dc;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-ind-cancel {
+  background: transparent;
+  border: 1px solid #363a45;
+  color: #d1d4dc;
+  padding: 7px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.btn-ind-cancel:hover {
+  background-color: #2a2e39;
+}
+
+.btn-ind-apply {
+  background-color: var(--tv-accent, #2962ff);
+  border: none;
+  color: #ffffff;
+  padding: 7px 22px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-ind-apply:hover {
+  background-color: var(--tv-accent-hover, #1e53e5);
+}
+
+/* Gear button in Indicator Modal List */
+.indicator-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.indicator-gear-btn {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.indicator-gear-btn:hover {
+  color: var(--tv-accent, #2962ff);
+  background-color: rgba(41, 98, 255, 0.12);
+}
