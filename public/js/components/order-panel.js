@@ -157,6 +157,11 @@ export class OrderPanelComponent {
   initQuantityInputs() {
     if (this.inputLots) {
       this.inputLots.oninput = () => {
+        const val = Number(this.inputLots.value) || 1;
+        const qLots = document.getElementById('inputQuickLots');
+        if (qLots && Number(qLots.value) !== val) {
+          qLots.value = val;
+        }
         this.updateLotsDisplay();
         this.updateRiskRewardPreview();
       };
@@ -172,6 +177,10 @@ export class OrderPanelComponent {
         chip.classList.add('active');
         const lots = Number(chip.getAttribute('data-lots')) || 1;
         if (this.inputLots) this.inputLots.value = lots;
+        const qLots = document.getElementById('inputQuickLots');
+        if (qLots && Number(qLots.value) !== lots) {
+          qLots.value = lots;
+        }
         this.updateLotsDisplay();
         this.updateRiskRewardPreview();
       };

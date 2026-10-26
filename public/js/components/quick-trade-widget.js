@@ -28,7 +28,11 @@ export class QuickTradeWidgetComponent {
 
     // Event bus listeners
     eventBus.on('bar:tick', (bar) => {
-      this.updatePrice(bar);
+      if (this.store.multiChart && this.store.multiChart.activeSlotId > 0) {
+        this.refreshToCurrentBar();
+      } else {
+        this.updatePrice(bar);
+      }
     });
 
     eventBus.on('symbol:change', () => {
@@ -63,6 +67,17 @@ export class QuickTradeWidgetComponent {
         const val = Math.max(1, Math.min(10000, Number(this.inputQuickLots.value) || 1));
         this.syncLotsToPanel(val);
       };
+    }
+
+    // Bidirectional sync with order-panel lots input
+    const panelInput = document.getElementById('inputLots');
+    if (panelInput) {
+      panelInput.addEventListener('input', () => {
+        const val = Math.max(1, Math.min(10000, Number(panelInput.value) || 1));
+        if (this.inputQuickLots && Number(this.inputQuickLots.value) !== val) {
+          this.inputQuickLots.value = val;
+        }
+      });
     }
   }
 

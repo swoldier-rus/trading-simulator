@@ -802,13 +802,17 @@ export class ChartControllerComponent {
     const qtw = document.getElementById('chartQuickTradeWidget');
     let topOffset = 90;
     let leftOffset = 18;
-    if (qtw && this.chartEl) {
+    const slot0 = document.getElementById('chartSlot0');
+    if (qtw && slot0 && slot0.contains(qtw) && this.chartEl) {
       const qtwRect = qtw.getBoundingClientRect();
       const chartRect = this.chartEl.getBoundingClientRect();
       if (qtwRect.bottom > 0 && chartRect.top > 0) {
         topOffset = Math.round(qtwRect.bottom - chartRect.top + 8);
         leftOffset = Math.max(18, Math.round(qtwRect.left - chartRect.left));
       }
+    } else {
+      topOffset = 50;
+      leftOffset = 18;
     }
     this.chart._legendStack._legendOffset = { top: topOffset, left: leftOffset };
     if (typeof this.chart._legendStack._syncLegendOffsets === 'function') {

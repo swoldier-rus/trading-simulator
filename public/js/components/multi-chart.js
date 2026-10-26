@@ -78,7 +78,10 @@ export class ChartSlot {
     this.badgeEl = slot.querySelector('.chart-slot-badge');
     this.tfDropdownEl = slot.querySelector('.slot-tf-dropdown');
 
-    // Click to focus slot
+    // Click to focus slot (pointerdown capture phase for instant responsiveness)
+    slot.addEventListener('pointerdown', () => {
+      this.manager.setActiveSlot(this.id);
+    }, true);
     slot.addEventListener('mousedown', () => {
       this.manager.setActiveSlot(this.id);
     });
@@ -242,8 +245,9 @@ export class ChartSlot {
       });
     }
 
-    // Allow clicking on secondary charts to choose Jump to Bar start point
+    // Allow clicking on secondary charts to choose Jump to Bar start point or activate slot
     this.chart.subscribeClick((param) => {
+      this.manager.setActiveSlot(this.id);
       const isSelecting = this.store.fsm ? this.store.fsm.isSelectingJumpBar() : this.store.get('isSelectingJumpBar');
       if (isSelecting) {
         let targetTime = null;
@@ -567,6 +571,11 @@ export class ChartSlot {
     if (this.mainSeries) {
       this.mainSeries.setData(newVisible);
     }
+
+    // If this slot is focused, keep Quick Trade widget price synced with visible candle
+    if (this.manager && this.manager.activeSlotId === this.id && this.store.quickTradeWidget) {
+      this.store.quickTradeWidget.refreshToCurrentBar();
+    }
   }
 
   // Restore full dataset on replay exit
@@ -672,6 +681,14 @@ export class ChartSlot {
       try {
         this.chart.destroy();
       } catch (e) {}
+    }
+    // Rescue Quick Trade widget to Slot 0 if it was inside this slot being destroyed
+    const quickWidgetEl = document.getElementById('chartQuickTradeWidget');
+    if (quickWidgetEl && this.slotEl && this.slotEl.contains(quickWidgetEl)) {
+      const targetParent = document.querySelector('#chartSlot0 .chart-legend') || document.getElementById('chartSlot0');
+      if (targetParent) {
+        targetParent.appendChild(quickWidgetEl);
+      }
     }
     if (this.slotEl && this.slotEl.parentNode) {
       this.slotEl.parentNode.removeChild(this.slotEl);
@@ -926,6 +943,9 @@ export class MultiChartLayoutManager {
     // When slot 0 is clicked
     const slot0 = document.getElementById('chartSlot0');
     if (slot0) {
+      slot0.addEventListener('pointerdown', () => {
+        this.setActiveSlot(0);
+      }, true);
       slot0.addEventListener('mousedown', () => {
         this.setActiveSlot(0);
       });
@@ -1054,12 +1074,11 @@ export class MultiChartLayoutManager {
     }
 
     const requiredSlots = this.getRequiredSlotCount(layoutPreset);
-    this.syncSlots(requiredSlots);
-
-    // If active slot was closed, switch focus to slot 0
+    // If active slot will be closed, switch focus to slot 0 before unmounting
     if (this.activeSlotId >= requiredSlots) {
       this.setActiveSlot(0);
     }
+    this.syncSlots(requiredSlots);
 
     // If replay is active, ensure all slots are immediately synced to simulation time
     if (this.isReplayActive()) {
@@ -1176,13 +1195,18 @@ export class MultiChartLayoutManager {
     });
 
     // Move Quick Trade Widget into active slot
-    const targetSlotEl = slotId === 0 ? document.getElementById('chartSlot0') : this.slots.get(slotId)?.slotEl;
+    const targetSlotEl = slotId === 0
+      ? (document.querySelector('#chartSlot0 .chart-legend') || document.getElementById('chartSlot0'))
+      : this.slots.get(slotId)?.slotEl;
     const quickWidgetEl = document.getElementById('chartQuickTradeWidget');
     if (targetSlotEl && quickWidgetEl && quickWidgetEl.parentNode !== targetSlotEl) {
       targetSlotEl.appendChild(quickWidgetEl);
     }
     if (this.store.quickTradeWidget) {
       this.store.quickTradeWidget.refreshToCurrentBar();
+    }
+    if (this.store.chartController) {
+      this.store.chartController.syncIndicatorLegendOffset();
     }
     if (this.store.orderPanel) {
       this.store.orderPanel.updateSubmitButtonDesc();

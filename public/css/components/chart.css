@@ -166,10 +166,44 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-top: 5px;
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
+  z-index: 20;
+  animation: qtwFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes qtwFadeIn {
+  from {
+    opacity: 0.5;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Inside Slot 0 legend: normal flex flow under OHLC bar */
+.chart-legend .chart-quick-trade-widget {
+  position: static;
+  margin-top: 5px;
+}
+
+/* Direct child of #chartSlot0 fallback */
+#chartSlot0 > .chart-quick-trade-widget {
+  position: absolute;
+  top: 44px;
+  left: 18px;
+  z-index: 20;
+}
+
+/* Inside secondary chart slots (1x2, 2x1, 2x2): dock top-left */
+.chart-slot:not(#chartSlot0) .chart-quick-trade-widget {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 20;
 }
 
 .quick-trade-btn {
