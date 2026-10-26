@@ -33,6 +33,7 @@ import { RightRailComponent } from './components/right-rail.js';
 import { SessionBreaksOverlayComponent } from './components/session-breaks-overlay.js';
 import { WatchlistComponent } from './components/watchlist.js';
 import { IndicatorSettingsModalComponent } from './components/indicator-settings-modal.js';
+import { HistoryStartMarkerComponent } from './components/history-start-marker.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -63,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const zoomController = new ChartZoomController(store);
   const watchlist = new WatchlistComponent(store);
   const indicatorSettingsModal = new IndicatorSettingsModalComponent(store);
+  const historyStartMarker = new HistoryStartMarkerComponent(store);
 
   store.chartController = chartController;
   store.replayBar = replayBar;
@@ -80,6 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   store.drawingRail = drawingRail;
   store.zoomController = zoomController;
   store.indicatorSettingsModal = indicatorSettingsModal;
+  store.historyStartMarker = historyStartMarker;
   store.indicatorManager = new IndicatorManager(store.chart);
   store.components = {
     chartController,
@@ -101,7 +104,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     rightRail,
     quickTradeWidget,
     zoomController,
-    indicatorSettingsModal
+    indicatorSettingsModal,
+    historyStartMarker
   };
 
   const sessionService = new SessionPersistenceService(store);
@@ -612,7 +616,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       chartStyleModal,
       rightRail,
       zoomController,
-      indicatorSettingsModal
+      indicatorSettingsModal,
+      historyStartMarker
     },
     loadCandles,
     prefetchSubsequentBars,

@@ -323,7 +323,14 @@ export class ChartControllerComponent {
                   to: before.to + inserted
                 });
               }
+            } else {
+              // Prepend returned 0 new unique candles -> start of history reached
+              const earliest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
+              eventBus.emit('chart:history_start_reached', earliest);
             }
+          } else {
+            // Server/cache returned 0 candles -> start of history reached
+            eventBus.emit('chart:history_start_reached', oldest);
           }
         } catch (err) {
           console.error('History loader error:', err);
