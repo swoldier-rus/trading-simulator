@@ -110,14 +110,23 @@ export class QuickTradeWidgetComponent {
     const paperAccount = this.store.paperAccount;
     if (!simulator || !paperAccount) return;
 
-    const currentBar = simulator.getCurrentBar();
+    const activeSlotId = this.store.multiChart ? this.store.multiChart.activeSlotId : 0;
+    const activeSlot = (activeSlotId > 0 && this.store.multiChart) ? this.store.multiChart.slots.get(activeSlotId) : null;
+    const symbol = activeSlot ? activeSlot.symbol : this.store.get('currentSymbol');
+
+    let currentBar = null;
+    if (activeSlot && activeSlot.currentVisibleCandles && activeSlot.currentVisibleCandles.length > 0) {
+      currentBar = activeSlot.currentVisibleCandles[activeSlot.currentVisibleCandles.length - 1];
+    } else {
+      currentBar = simulator.getCurrentBar();
+    }
+
     if (!currentBar) {
       showToast('Нет данных свечей для мгновенной сделки', 'error');
       return;
     }
 
     const lots = Number(this.inputQuickLots ? this.inputQuickLots.value : 1) || 1;
-    const symbol = this.store.get('currentSymbol');
     const lotSize = this.store.get('currentLotSize') || 1;
     const price = currentBar.close;
 
@@ -171,8 +180,15 @@ export class QuickTradeWidgetComponent {
 
   refreshToCurrentBar() {
     if (this.store.get('isSymbolLoading')) return;
-    const sim = this.store.simulator;
-    const current = sim ? sim.getCurrentBar() : null;
+    const activeSlotId = this.store.multiChart ? this.store.multiChart.activeSlotId : 0;
+    const activeSlot = (activeSlotId > 0 && this.store.multiChart) ? this.store.multiChart.slots.get(activeSlotId) : null;
+    let current = null;
+    if (activeSlot && activeSlot.currentVisibleCandles && activeSlot.currentVisibleCandles.length > 0) {
+      current = activeSlot.currentVisibleCandles[activeSlot.currentVisibleCandles.length - 1];
+    } else {
+      const sim = this.store.simulator;
+      current = sim ? sim.getCurrentBar() : null;
+    }
     if (current) {
       this.updatePrice(current);
     }

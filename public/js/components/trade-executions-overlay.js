@@ -3,17 +3,25 @@ import { eventBus } from '../core/event-bus.js';
 import { binarySearchCandleFloor } from '../core/utils.js';
 
 export class TradeExecutionsOverlayComponent {
-  constructor(store) {
+  constructor(store, options = {}) {
     this.store = store;
-
-    this.chartContainer = document.querySelector('.chart-container');
-    this.overlayEl = document.getElementById('chartExecutionsOverlay');
-    this.svgEl = document.getElementById('chartExecutionsSvg');
-    this.markersEl = document.getElementById('chartExecutionsMarkers');
-    this.tooltipEl = document.getElementById('chartExecutionTooltip');
+    this.slotId = options.slotId ?? 0;
+    this.slotEl = options.slotEl || document.getElementById('chartSlot0');
+    this.chartContainer = options.chartContainer || this.slotEl || document.querySelector('.chart-container');
+    this.overlayEl = options.overlayEl || document.getElementById('chartExecutionsOverlay');
+    this.svgEl = options.svgEl || document.getElementById('chartExecutionsSvg');
+    this.markersEl = options.markersEl || document.getElementById('chartExecutionsMarkers');
+    this.tooltipEl = options.tooltipEl || document.getElementById('chartExecutionTooltip');
+    this.getChart = options.getChart || (() => this.store.chart);
+    this.getSymbol = options.getSymbol || (() => this.store.get('currentSymbol'));
+    this.getCandles = options.getCandles || (() => {
+      const sim = this.store.simulator;
+      return sim && Array.isArray(sim.allCandles) ? sim.allCandles : [];
+    });
 
     this._renderPending = false;
     this._hasSubscribedRangeChange = false;
+    this._unsubs = [];
     this.hoveredGroupId = null;
     this.groupsMap = new Map();
 
@@ -24,31 +32,37 @@ export class TradeExecutionsOverlayComponent {
     if (!this.overlayEl || !this.chartContainer) return;
 
     // Listen to account and market events
-    eventBus.on('account:update', () => this.scheduleRender());
-    eventBus.on('bar:tick', () => this.scheduleRender());
-    eventBus.on('symbol:change', () => this.scheduleRender());
-    eventBus.on('executions:toggle', () => this.scheduleRender());
+    this._unsubs.push(
+      eventBus.on('account:update', () => this.scheduleRender()),
+      eventBus.on('bar:tick', () => this.scheduleRender()),
+      eventBus.on('symbol:change', () => this.scheduleRender()),
+      eventBus.on('executions:toggle', () => this.scheduleRender())
+    );
 
     // Re-render when chart pans or zooms
-    this.chartContainer.addEventListener('wheel', () => {
+    this._wheelHandler = () => {
       this.hideTooltip();
       this.scheduleRender();
-    }, { passive: true });
+    };
+    this.chartContainer.addEventListener('wheel', this._wheelHandler, { passive: true });
 
-    this.chartContainer.addEventListener('mousemove', (e) => {
+    this._mouseMoveHandler = (e) => {
       if (e.buttons === 1) {
         this.hideTooltip();
         this.scheduleRender();
       }
-    });
+    };
+    this.chartContainer.addEventListener('mousemove', this._mouseMoveHandler);
 
-    this.chartContainer.addEventListener('touchmove', () => {
+    this._touchMoveHandler = () => {
       this.hideTooltip();
       this.scheduleRender();
-    }, { passive: true });
+    };
+    this.chartContainer.addEventListener('touchmove', this._touchMoveHandler, { passive: true });
 
     // Window resize
-    window.addEventListener('resize', () => this.scheduleRender());
+    this._resizeHandler = () => this.scheduleRender();
+    window.addEventListener('resize', this._resizeHandler);
 
     // Subscribe to chart visible range changes and animation frame hooks
     this._subscribeChartRangeChange();
@@ -58,6 +72,28 @@ export class TradeExecutionsOverlayComponent {
 
     // Initial render
     this.scheduleRender();
+  }
+
+  destroy() {
+    if (this._unsubs) {
+      this._unsubs.forEach(fn => fn());
+      this._unsubs = [];
+    }
+    if (this._wheelHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('wheel', this._wheelHandler);
+    }
+    if (this._mouseMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('mousemove', this._mouseMoveHandler);
+    }
+    if (this._touchMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('touchmove', this._touchMoveHandler);
+    }
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+    }
+    if (this.markersEl) this.markersEl.innerHTML = '';
+    if (this.svgEl) this.svgEl.innerHTML = '';
+    this.hideTooltip();
   }
 
   _subscribeChartRangeChange() {
@@ -129,7 +165,15 @@ export class TradeExecutionsOverlayComponent {
   }
 
   get chart() {
-    return this.store.chart;
+    return this.getChart ? this.getChart() : this.store.chart;
+  }
+
+  get symbol() {
+    return this.getSymbol ? this.getSymbol() : this.store.get('currentSymbol');
+  }
+
+  get candles() {
+    return this.getCandles ? this.getCandles() : (this.store.simulator?.allCandles || []);
   }
 
   scheduleRender() {
@@ -187,8 +231,7 @@ export class TradeExecutionsOverlayComponent {
 
   findCandleForTime(time) {
     if (!time) return null;
-    const sim = this.store.simulator;
-    const candles = sim && Array.isArray(sim.allCandles) ? sim.allCandles : null;
+    const candles = this.candles;
     if (!candles || candles.length === 0) return null;
 
     // Binary search for exact or latest candle with time <= targetTime (O(log N))
@@ -358,7 +401,7 @@ export class TradeExecutionsOverlayComponent {
       return;
     }
 
-    const currentSymbol = this.store.get('currentSymbol');
+    const currentSymbol = this.symbol;
     const executions = [];
 
     // 1. Open active positions

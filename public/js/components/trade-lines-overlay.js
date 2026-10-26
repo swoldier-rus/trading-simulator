@@ -3,17 +3,21 @@ import { eventBus } from '../core/event-bus.js';
 import { formatMoney, showToast } from '../core/utils.js';
 
 export class TradeLinesOverlayComponent {
-  constructor(store) {
+  constructor(store, options = {}) {
     this.store = store;
-
-    this.chartContainer = document.querySelector('.chart-container');
-    this.overlayEl = document.getElementById('chartTradeOverlay');
-    this.chartEl = document.getElementById('chart');
+    this.slotId = options.slotId ?? 0;
+    this.slotEl = options.slotEl || document.getElementById('chartSlot0');
+    this.overlayEl = options.overlayEl || document.getElementById('chartTradeOverlay');
+    this.chartEl = options.chartEl || document.getElementById('chart');
+    this.chartContainer = options.chartContainer || this.slotEl || document.querySelector('.chart-container');
+    this.getChart = options.getChart || (() => this.store.chart);
+    this.getSymbol = options.getSymbol || (() => this.store.get('currentSymbol'));
 
     // Drag state
     this.dragState = null; // { type: 'sl'|'tp'|'order', id: string, initialPrice: number, pointerId: number }
 
     this._hasSubscribedRangeChange = false;
+    this._unsubs = [];
     this.init();
   }
 
@@ -21,35 +25,63 @@ export class TradeLinesOverlayComponent {
     if (!this.overlayEl || !this.chartContainer) return;
 
     // Listen to account and market events
-    eventBus.on('account:update', () => this.scheduleRender());
-    eventBus.on('bar:tick', (bar) => this.scheduleRender(bar));
-    eventBus.on('symbol:change', () => this.scheduleRender());
+    this._unsubs.push(
+      eventBus.on('account:update', () => this.scheduleRender()),
+      eventBus.on('bar:tick', (bar) => this.scheduleRender(bar)),
+      eventBus.on('symbol:change', () => this.scheduleRender())
+    );
 
     // Re-render overlay when chart pans or zooms
-    this.chartContainer.addEventListener('wheel', () => this.scheduleRender(), { passive: true });
+    this._wheelHandler = () => this.scheduleRender();
+    this.chartContainer.addEventListener('wheel', this._wheelHandler, { passive: true });
 
     // Only re-render on mousemove when user is actively panning chart canvas with mouse button held down
-    this.chartContainer.addEventListener('mousemove', (e) => {
+    this._mouseMoveHandler = (e) => {
       if (e.buttons === 1 && !this.dragState && !e.target.closest('.chart-trade-overlay')) {
         this.scheduleRender();
       }
-    });
+    };
+    this.chartContainer.addEventListener('mousemove', this._mouseMoveHandler);
 
-    this.chartContainer.addEventListener('touchmove', () => {
+    this._touchMoveHandler = () => {
       if (!this.dragState) this.scheduleRender();
-    }, { passive: true });
+    };
+    this.chartContainer.addEventListener('touchmove', this._touchMoveHandler, { passive: true });
 
     // Subscribe to chart logical range changes (pan/scroll/zoom)
     this._subscribeChartRangeChange();
 
     // Window resize
-    window.addEventListener('resize', () => this.scheduleRender());
+    this._resizeHandler = () => this.scheduleRender();
+    window.addEventListener('resize', this._resizeHandler);
 
     // Delegated listeners attached ONCE to persistent overlay container
     this.attachOverlayListeners();
 
     // Initial render
     this.scheduleRender();
+  }
+
+  destroy() {
+    if (this._unsubs) {
+      this._unsubs.forEach(fn => fn());
+      this._unsubs = [];
+    }
+    if (this._wheelHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('wheel', this._wheelHandler);
+    }
+    if (this._mouseMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('mousemove', this._mouseMoveHandler);
+    }
+    if (this._touchMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('touchmove', this._touchMoveHandler);
+    }
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+    }
+    if (this.overlayEl) {
+      this.overlayEl.innerHTML = '';
+    }
   }
 
   _subscribeChartRangeChange() {
@@ -107,7 +139,11 @@ export class TradeLinesOverlayComponent {
   }
 
   get chart() {
-    return this.store.chart;
+    return this.getChart ? this.getChart() : this.store.chart;
+  }
+
+  get symbol() {
+    return this.getSymbol ? this.getSymbol() : this.store.get('currentSymbol');
   }
 
   scheduleRender(latestBar = null) {
@@ -133,7 +169,7 @@ export class TradeLinesOverlayComponent {
   updatePnLOnly(latestBar) {
     const paperAccount = this.store.paperAccount;
     if (!paperAccount) return;
-    const currentSymbol = this.store.get('currentSymbol');
+    const currentSymbol = this.symbol;
     const pos = paperAccount.positions.find(p => p.symbol === currentSymbol);
     if (!pos || !this.overlayEl) return;
 
@@ -173,7 +209,7 @@ export class TradeLinesOverlayComponent {
       return;
     }
 
-    const currentSymbol = this.store.get('currentSymbol');
+    const currentSymbol = this.symbol;
     const positions = paperAccount.positions.filter(p => p.symbol === currentSymbol);
     const orders = paperAccount.orders.filter(o => o.symbol === currentSymbol);
 
@@ -184,7 +220,7 @@ export class TradeLinesOverlayComponent {
 
     const bar = latestBar || (this.store.simulator ? this.store.simulator.getCurrentBar() : null);
     const curPrice = bar ? bar.close : (positions[0] ? positions[0].currentPrice : 0);
-    const containerHeight = this.chartContainer.clientHeight;
+    const containerHeight = (this.slotEl || this.chartContainer).clientHeight;
     const activeKeys = new Set();
 
     // 1. Render Open Positions and SL/TP bracket lines
@@ -659,7 +695,7 @@ export class TradeLinesOverlayComponent {
       // Safe fallback for synthetic/unsupported pointer capture
     }
 
-    const chartRect = this.chartContainer.getBoundingClientRect();
+    const chartRect = (this.slotEl || this.chartContainer).getBoundingClientRect();
     const currentPriceText = handle.querySelector('[data-field="price"]')?.textContent || '0';
     const initialPrice = parseFloat(currentPriceText.replace(/[^\d.]/g, '')) || 0;
 

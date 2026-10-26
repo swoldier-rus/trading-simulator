@@ -2,6 +2,8 @@
 import { eventBus } from '../core/event-bus.js';
 import { marketDataService } from '../services/market-data.service.js';
 import { binarySearchCandleFloorIndex, timeframeToSeconds, showToast } from '../core/utils.js';
+import { TradeLinesOverlayComponent } from './trade-lines-overlay.js';
+import { TradeExecutionsOverlayComponent } from './trade-executions-overlay.js';
 
 export class ChartSlot {
   constructor(options) {
@@ -15,6 +17,8 @@ export class ChartSlot {
     this.chart = null;
     this.mainSeries = null;
     this.drawingController = null;
+    this.tradeLinesOverlay = null;
+    this.tradeExecutionsOverlay = null;
     this.slotEl = null;
     this.bodyEl = null;
     this.badgeEl = null;
@@ -22,6 +26,7 @@ export class ChartSlot {
     this.resizeObserver = null;
     this.isMaximized = false;
     this.candlesCount = 0;
+    this._isLoadingHistory = false;
 
     // MTF Replay Data Caches
     this.allCandles = [];
@@ -60,6 +65,12 @@ export class ChartSlot {
         </button>
       </div>
       <div class="chart-slot-body" id="chartSlotBody${this.id}"></div>
+      <div class="chart-trade-overlay" id="chartTradeOverlay${this.id}"></div>
+      <div class="chart-executions-overlay" id="chartExecutionsOverlay${this.id}">
+        <svg class="chart-executions-svg" id="chartExecutionsSvg${this.id}"></svg>
+        <div class="chart-executions-markers" id="chartExecutionsMarkers${this.id}"></div>
+        <div class="chart-execution-tooltip" id="chartExecutionTooltip${this.id}" style="display: none;"></div>
+      </div>
     `;
 
     this.slotEl = slot;
@@ -203,6 +214,34 @@ export class ChartSlot {
       }
     }
 
+    // Initialize interactive Trade Lines Overlay for this slot
+    const overlayTradeEl = this.slotEl.querySelector(`#chartTradeOverlay${this.id}`);
+    if (overlayTradeEl) {
+      this.tradeLinesOverlay = new TradeLinesOverlayComponent(this.store, {
+        slotId: this.id,
+        slotEl: this.slotEl,
+        overlayEl: overlayTradeEl,
+        getChart: () => this.chart,
+        getSymbol: () => this.symbol
+      });
+    }
+
+    // Initialize Trade Executions Overlay for this slot
+    const overlayExecEl = this.slotEl.querySelector(`#chartExecutionsOverlay${this.id}`);
+    if (overlayExecEl) {
+      this.tradeExecutionsOverlay = new TradeExecutionsOverlayComponent(this.store, {
+        slotId: this.id,
+        slotEl: this.slotEl,
+        overlayEl: overlayExecEl,
+        svgEl: this.slotEl.querySelector(`#chartExecutionsSvg${this.id}`),
+        markersEl: this.slotEl.querySelector(`#chartExecutionsMarkers${this.id}`),
+        tooltipEl: this.slotEl.querySelector(`#chartExecutionTooltip${this.id}`),
+        getChart: () => this.chart,
+        getSymbol: () => this.symbol,
+        getCandles: () => this.allCandles
+      });
+    }
+
     // Allow clicking on secondary charts to choose Jump to Bar start point
     this.chart.subscribeClick((param) => {
       const isSelecting = this.store.fsm ? this.store.fsm.isSelectingJumpBar() : this.store.get('isSelectingJumpBar');
@@ -328,6 +367,41 @@ export class ChartSlot {
     }
   }
 
+  async ensureHistoryBefore(targetTime) {
+    if (this._isLoadingHistory || !this.allCandles || this.allCandles.length === 0) return;
+    this._isLoadingHistory = true;
+    try {
+      let maxBatches = 5;
+      while (maxBatches-- > 0 && this.allCandles.length > 0 && targetTime < this.allCandles[0].time) {
+        const oldest = this.allCandles[0];
+        const res = await marketDataService.getCandles(
+          this.symbol,
+          this.figi,
+          this.timeframe,
+          1200,
+          oldest.time - 1,
+          null,
+          { silent: true }
+        );
+        if (res && res.candles && res.candles.length > 0) {
+          const fresh = res.candles.filter(b => b.time < oldest.time);
+          if (fresh.length === 0) break;
+          this.allCandles = [...fresh, ...this.allCandles];
+        } else {
+          break;
+        }
+      }
+      const simTime = this.manager.getCurrentSimulationTime();
+      if (simTime) {
+        this.syncToReplayTime(simTime, null, false);
+      }
+    } catch (e) {
+      console.warn(`[ChartSlot ${this.id}] ensureHistoryBefore error:`, e);
+    } finally {
+      this._isLoadingHistory = false;
+    }
+  }
+
   // MTF Replay Synchronizer: Slices history and synthesizes forming bar without lookahead bias
   syncToReplayTime(simTime, currentTickPrice = null, isIncremental = false) {
     if (!this.mainSeries || !this.allCandles || this.allCandles.length === 0) return;
@@ -344,6 +418,10 @@ export class ChartSlot {
     if (stepSlot > stepSim) {
       const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
       if (floorIdx < 0) {
+        if (this.allCandles.length > 0 && simTime < this.allCandles[0].time) {
+          this.ensureHistoryBefore(simTime);
+          return;
+        }
         this._applyVisibleCandles([], isIncremental);
         return;
       }
@@ -421,6 +499,10 @@ export class ChartSlot {
       // EQUAL OR LOWER TIMEFRAME (e.g. Slot is 15M / 1H, Sim is 1H / 1D)
       const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
       if (floorIdx < 0) {
+        if (this.allCandles.length > 0 && simTime < this.allCandles[0].time) {
+          this.ensureHistoryBefore(simTime);
+          return;
+        }
         this._applyVisibleCandles([], isIncremental);
         return;
       }
@@ -429,7 +511,7 @@ export class ChartSlot {
 
       if (currentTickPrice !== null && newVisible.length > 0) {
         const last = newVisible[newVisible.length - 1];
-        if (last.time === simTime) {
+        if (last && last.time === simTime) {
           const updatedLast = {
             ...last,
             close: currentTickPrice,
@@ -463,14 +545,20 @@ export class ChartSlot {
         try {
           this.mainSeries.update(lastBar);
           return;
-        } catch (e) {}
+        } catch (e) {
+          if (this.mainSeries) this.mainSeries.setData(newVisible);
+          return;
+        }
       } else if (newLen === prevLen + 1) {
         // Append newly opened bar
         this.currentVisibleCandles.push(lastBar);
         try {
           this.mainSeries.update(lastBar);
           return;
-        } catch (e) {}
+        } catch (e) {
+          if (this.mainSeries) this.mainSeries.setData(newVisible);
+          return;
+        }
       }
     }
 
@@ -498,6 +586,8 @@ export class ChartSlot {
     if (this.manager.drawingLinkGroup && this.chart) {
       this.manager.drawingLinkGroup.setContext(this.chart, { symbol: this.symbol, exchange: 'MOEX' });
     }
+    this.tradeLinesOverlay?.scheduleRender();
+    this.tradeExecutionsOverlay?.scheduleRender();
     this.manager.saveSlotsConfig();
   }
 
@@ -560,6 +650,14 @@ export class ChartSlot {
       try {
         this.manager.drawingLinkGroup.remove(this.chart);
       } catch (e) {}
+    }
+    if (this.tradeLinesOverlay) {
+      try { this.tradeLinesOverlay.destroy(); } catch (e) {}
+      this.tradeLinesOverlay = null;
+    }
+    if (this.tradeExecutionsOverlay) {
+      try { this.tradeExecutionsOverlay.destroy(); } catch (e) {}
+      this.tradeExecutionsOverlay = null;
     }
     if (this.drawingController && typeof this.drawingController.destroy === 'function') {
       try {
@@ -1076,6 +1174,19 @@ export class MultiChartLayoutManager {
       const id = Number(slotEl.getAttribute('data-slot-id'));
       slotEl.classList.toggle('active', id === slotId);
     });
+
+    // Move Quick Trade Widget into active slot
+    const targetSlotEl = slotId === 0 ? document.getElementById('chartSlot0') : this.slots.get(slotId)?.slotEl;
+    const quickWidgetEl = document.getElementById('chartQuickTradeWidget');
+    if (targetSlotEl && quickWidgetEl && quickWidgetEl.parentNode !== targetSlotEl) {
+      targetSlotEl.appendChild(quickWidgetEl);
+    }
+    if (this.store.quickTradeWidget) {
+      this.store.quickTradeWidget.refreshToCurrentBar();
+    }
+    if (this.store.orderPanel) {
+      this.store.orderPanel.updateSubmitButtonDesc();
+    }
 
     if (slotId === 0) {
       // Focus Slot 0 (primary chart)

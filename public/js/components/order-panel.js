@@ -360,8 +360,9 @@ export class OrderPanelComponent {
       }
     }
 
+    const targetSymbol = this.getTargetSymbol();
     const res = paperAccount.placeOrder({
-      symbol: this.store.get('currentSymbol'),
+      symbol: targetSymbol,
       side,
       type: selectedOrderType,
       qty: lots,
@@ -395,10 +396,18 @@ export class OrderPanelComponent {
     });
   }
 
+  getTargetSymbol() {
+    if (this.store.multiChart && this.store.multiChart.activeSlotId > 0) {
+      const activeSlot = this.store.multiChart.slots.get(this.store.multiChart.activeSlotId);
+      if (activeSlot && activeSlot.symbol) return activeSlot.symbol;
+    }
+    return this.store.get('currentSymbol') || 'SBER';
+  }
+
   updateSubmitButtonDesc() {
     const lots = Number(this.inputLots ? this.inputLots.value : 1) || 1;
     const selectedOrderType = this.store.get('selectedOrderType');
-    const currentSymbol = this.store.get('currentSymbol');
+    const currentSymbol = this.getTargetSymbol();
 
     let typeName = 'МАРКЕТНАЯ';
     if (selectedOrderType === 'LIMIT') {

@@ -103,24 +103,28 @@ export class ChartOrderMenuComponent {
     // Right-click on chart -> open chart order menu, time scale menu, or price scale menu
     this.chartContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const chart = this.store.chart;
-      if (this.chartContainer && chart) {
-        const containerRect = this.chartContainer.getBoundingClientRect();
-        const localX = e.clientX - containerRect.left;
-        const localY = e.clientY - containerRect.top;
+      const slotEl = e.target.closest('.chart-slot');
+      const slotId = slotEl ? Number(slotEl.getAttribute('data-slot-id')) : 0;
+      const chart = slotId === 0 ? this.store.chart : this.store.multiChart?.slots?.get(slotId)?.chart;
+      const symbol = slotId === 0 ? this.store.get('currentSymbol') : this.store.multiChart?.slots?.get(slotId)?.symbol;
+
+      if (slotEl && chart) {
+        const slotRect = slotEl.getBoundingClientRect();
+        const localX = e.clientX - slotRect.left;
+        const localY = e.clientY - slotRect.top;
 
         // 1. Check if right-click was on right price scale (rightmost ~65px)
         const priceScaleWidth = 65;
-        if (localX >= containerRect.width - priceScaleWidth) {
+        if (localX >= slotRect.width - priceScaleWidth) {
           this.close();
           this.closeTimeScaleContextMenu();
           this.openPriceScaleContextMenu(e.clientX, e.clientY);
           return;
         }
 
-        // 2. Check if right-click was on bottom time scale (bottom 28px of chart container)
+        // 2. Check if right-click was on bottom time scale (bottom 28px of slot container)
         const timeScaleHeight = 28;
-        if (localY >= containerRect.height - timeScaleHeight) {
+        if (localY >= slotRect.height - timeScaleHeight) {
           this.close();
           this.closePriceScaleContextMenu();
           this.openTimeScaleContextMenu(e.clientX, e.clientY);
@@ -128,7 +132,7 @@ export class ChartOrderMenuComponent {
         }
 
         // 3. Drawing tools interception: right click finishes or cancels drawing (TradingView standard)
-        const dc = this.store.drawingController;
+        const dc = slotId === 0 ? this.store.drawingController : this.store.multiChart?.slots?.get(slotId)?.drawingController;
         if (dc) {
           const activeTool = typeof dc.activeTool === 'function' ? dc.activeTool() : dc._tool;
           const pendingCount = Array.isArray(dc._pending) ? dc._pending.length : 0;
@@ -161,25 +165,47 @@ export class ChartOrderMenuComponent {
         this.closePriceScaleContextMenu();
         const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
         if (price && price > 0) {
+          this.targetSlotId = slotId;
+          this.targetSymbol = symbol;
           this.open(price, e.clientX, e.clientY);
         }
       }
     });
 
     this.chartContainer.addEventListener('mousemove', (e) => {
-      const chart = this.store.chart;
-      const rect = this.chartContainer.getBoundingClientRect();
+      const slotEl = e.target.closest('.chart-slot');
+      if (!slotEl) {
+        if (!this.isMenuOpen && this.priceAxisPlusBtn) this.priceAxisPlusBtn.style.display = 'none';
+        return;
+      }
+      const slotId = Number(slotEl.getAttribute('data-slot-id')) || 0;
+      const chart = slotId === 0 ? this.store.chart : this.store.multiChart?.slots?.get(slotId)?.chart;
+      const symbol = slotId === 0 ? this.store.get('currentSymbol') : this.store.multiChart?.slots?.get(slotId)?.symbol;
+
+      const rect = slotEl.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
-      if (chart && localY >= 0 && localY <= rect.height) {
+
+      // Only show + button if mouse is over or near the price scale (right edge)
+      if (chart && localY >= 0 && localY <= rect.height - 28 && localX >= rect.width - 90) {
         const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
         if (price && price > 0) {
           this.hoveredPrice = price;
           this.hoveredY = localY;
+          this.targetSlotId = slotId;
+          this.targetSymbol = symbol;
           if (this.priceAxisPlusBtn) {
-            this.priceAxisPlusBtn.style.top = `${localY - 11}px`;
+            const containerRect = this.chartContainer.getBoundingClientRect();
+            this.priceAxisPlusBtn.style.top = `${rect.top - containerRect.top + localY - 11}px`;
+            this.priceAxisPlusBtn.style.left = `${rect.right - containerRect.left - 48}px`;
             this.priceAxisPlusBtn.style.display = 'flex';
           }
+          return;
         }
+      }
+
+      if (!this.isMenuOpen && this.priceAxisPlusBtn && e.target !== this.priceAxisPlusBtn && !this.priceAxisPlusBtn.contains(e.target)) {
+        this.priceAxisPlusBtn.style.display = 'none';
       }
     });
 
@@ -636,15 +662,16 @@ export class ChartOrderMenuComponent {
       }
     }
 
+    const targetSymbol = this.targetSymbol || this.store.get('currentSymbol');
     const res = paperAccount.placeOrder({
-      symbol: this.store.get('currentSymbol'),
+      symbol: targetSymbol,
       side,
       type,
       qty: this.menuLots,
       price: cleanPrice,
       sl: null,
       tp: null,
-      time: currentBar.time,
+      time: currentBar ? currentBar.time : null,
       lotSize: this.store.get('currentLotSize'),
       instrumentType: this.store.get('currentInstrumentType') || 'share'
     });
