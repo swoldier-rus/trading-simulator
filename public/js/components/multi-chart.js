@@ -644,7 +644,88 @@ export class ChartSlot {
         if (typeof ts.setRightOffset === 'function') ts.setRightOffset(12);
         if (typeof ts.setBarSpacing === 'function') ts.setBarSpacing(7.5);
       }
+      if (typeof this.chart.invalidate === 'function') {
+        this.chart.invalidate(e => e.invalidateGlobal(3));
+      }
+      showToast('Состояние графика сброшено (Alt+R)', 'info');
     } catch (e) {}
+  }
+
+  getCurrentBar() {
+    if (this.currentVisibleCandles && this.currentVisibleCandles.length > 0) {
+      return this.currentVisibleCandles[this.currentVisibleCandles.length - 1];
+    }
+    return null;
+  }
+
+  resetTimeScale(rightOffset = 12, defaultBarSpacing = 7.5) {
+    if (!this.chart) return;
+    try {
+      const ts = this.chart._timeScale || (typeof this.chart.timeScale === 'function' ? this.chart.timeScale() : this.chart.timeScale);
+      if (ts) {
+        if (typeof ts.setRightOffset === 'function') ts.setRightOffset(rightOffset);
+        if (typeof ts.setBarSpacing === 'function') ts.setBarSpacing(defaultBarSpacing);
+      }
+      if (typeof this.chart.invalidate === 'function') {
+        this.chart.invalidate(e => e.invalidateGlobal(3));
+      }
+      showToast('Масштаб временной шкалы сброшен', 'info');
+    } catch (e) {}
+  }
+
+  resetPriceScale() {
+    if (!this.chart) return;
+    try {
+      if (typeof this.chart.setAutoScale === 'function') this.chart.setAutoScale(true);
+      if (typeof this.chart.resetScale === 'function') this.chart.resetScale();
+      if (typeof this.chart.fitContent === 'function') this.chart.fitContent();
+      const panes = typeof this.chart.panes === 'function' ? this.chart.panes() : (this.chart._panes || []);
+      for (const p of panes) {
+        if (typeof p.clearRatioLocks === 'function') p.clearRatioLocks();
+        const scales = typeof p.scales === 'function' ? p.scales() : [];
+        for (const s of scales) {
+          if (typeof s.clearOwnedFixedRange === 'function') s.clearOwnedFixedRange();
+          if (typeof s.setAutoScale === 'function') s.setAutoScale(true);
+        }
+      }
+      if (typeof this.chart.invalidate === 'function') {
+        this.chart.invalidate(e => e.invalidateGlobal(3));
+      }
+      showToast('Масштаб ценовой шкалы сброшен', 'info');
+    } catch (e) {}
+  }
+
+  isPriceAutoScaleEnabled() {
+    if (!this.chart) return true;
+    try {
+      const panes = typeof this.chart.panes === 'function' ? this.chart.panes() : (this.chart._panes || []);
+      if (panes[0]) {
+        const scales = typeof panes[0].scales === 'function' ? panes[0].scales() : [];
+        if (scales[0] && typeof scales[0].autoScale === 'function') return scales[0].autoScale();
+        if (scales[0] && scales[0]._autoScale !== undefined) return !!scales[0]._autoScale;
+      }
+    } catch (e) {}
+    return true;
+  }
+
+  togglePriceAutoScale() {
+    if (!this.chart) return true;
+    const current = this.isPriceAutoScaleEnabled();
+    const next = !current;
+    try {
+      const panes = typeof this.chart.panes === 'function' ? this.chart.panes() : (this.chart._panes || []);
+      for (const p of panes) {
+        if (next && typeof p.clearRatioLocks === 'function') p.clearRatioLocks();
+        const scales = typeof p.scales === 'function' ? p.scales() : [];
+        for (const s of scales) {
+          if (typeof s.setAutoScale === 'function') s.setAutoScale(next);
+        }
+      }
+      if (typeof this.chart.setAutoScale === 'function') this.chart.setAutoScale(next);
+      if (typeof this.chart.invalidate === 'function') this.chart.invalidate(e => e.invalidateGlobal(3));
+      showToast(next ? 'Автомасштаб цены включен' : 'Автомасштаб цены выключен', 'info');
+    } catch (e) {}
+    return next;
   }
 
   // Restore full dataset on replay exit

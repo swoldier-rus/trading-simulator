@@ -8,6 +8,7 @@ export class ChartOrderMenuComponent {
 
     this.chartEl = document.getElementById('chart');
     this.chartContainer = this.chartEl ? this.chartEl.parentElement : null;
+    this.gridWrapper = document.getElementById('chartGridWrapper') || this.chartContainer;
     this.priceAxisPlusBtn = document.getElementById('priceAxisPlusBtn');
     this.chartOrderMenu = document.getElementById('chartOrderMenu');
 
@@ -44,6 +45,8 @@ export class ChartOrderMenuComponent {
     this.isPriceScaleMenuOpen = false;
 
     // State
+    this.targetSlotId = 0;
+    this.targetSymbol = null;
     this.menuTargetPrice = null;
     this.menuLots = 1;
     this.hoveredPrice = null;
@@ -54,7 +57,7 @@ export class ChartOrderMenuComponent {
   }
 
   init() {
-    // Relocate menus to document.body so they render above all app panels and cannot be clipped by container overflow
+    // Relocate menus and plus button to document.body so they render above all app panels and cannot be clipped by container overflow
     if (this.chartOrderMenu && this.chartOrderMenu.parentElement !== document.body) {
       document.body.appendChild(this.chartOrderMenu);
     }
@@ -63,6 +66,11 @@ export class ChartOrderMenuComponent {
     }
     if (this.priceScaleContextMenu && this.priceScaleContextMenu.parentElement !== document.body) {
       document.body.appendChild(this.priceScaleContextMenu);
+    }
+    if (this.priceAxisPlusBtn && this.priceAxisPlusBtn.parentElement !== document.body) {
+      document.body.appendChild(this.priceAxisPlusBtn);
+      this.priceAxisPlusBtn.style.position = 'fixed';
+      this.priceAxisPlusBtn.style.zIndex = '1000';
     }
 
     this.initMouseTracking();
@@ -98,17 +106,26 @@ export class ChartOrderMenuComponent {
   }
 
   initMouseTracking() {
-    if (!this.chartContainer) return;
+    const trackEl = this.gridWrapper || this.chartContainer;
+    if (!trackEl) return;
 
     // Right-click on chart -> open chart order menu, time scale menu, or price scale menu
-    this.chartContainer.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
+    trackEl.addEventListener('contextmenu', (e) => {
       const slotEl = e.target.closest('.chart-slot');
-      const slotId = slotEl ? Number(slotEl.getAttribute('data-slot-id')) : 0;
-      const chart = slotId === 0 ? this.store.chart : this.store.multiChart?.slots?.get(slotId)?.chart;
-      const symbol = slotId === 0 ? this.store.get('currentSymbol') : this.store.multiChart?.slots?.get(slotId)?.symbol;
+      if (!slotEl) return;
 
-      if (slotEl && chart) {
+      e.preventDefault();
+      const slotId = Number(slotEl.getAttribute('data-slot-id')) || 0;
+
+      // Requirement: right click immediately sets focus / activates the clicked window
+      if (this.store.multiChart && typeof this.store.multiChart.setActiveSlot === 'function') {
+        this.store.multiChart.setActiveSlot(slotId);
+      }
+
+      const chart = slotId === 0 ? this.store.chart : this.store.multiChart?.slots?.get(slotId)?.chart;
+      const symbol = slotId === 0 ? this.store.get('currentSymbol') : (this.store.multiChart?.slots?.get(slotId)?.symbol || this.store.get('currentSymbol'));
+
+      if (chart) {
         const slotRect = slotEl.getBoundingClientRect();
         const localX = e.clientX - slotRect.left;
         const localY = e.clientY - slotRect.top;
@@ -118,7 +135,7 @@ export class ChartOrderMenuComponent {
         if (localX >= slotRect.width - priceScaleWidth) {
           this.close();
           this.closeTimeScaleContextMenu();
-          this.openPriceScaleContextMenu(e.clientX, e.clientY);
+          this.openPriceScaleContextMenu(e.clientX, e.clientY, slotId);
           return;
         }
 
@@ -127,7 +144,7 @@ export class ChartOrderMenuComponent {
         if (localY >= slotRect.height - timeScaleHeight) {
           this.close();
           this.closePriceScaleContextMenu();
-          this.openTimeScaleContextMenu(e.clientX, e.clientY);
+          this.openTimeScaleContextMenu(e.clientX, e.clientY, slotId);
           return;
         }
 
@@ -163,16 +180,30 @@ export class ChartOrderMenuComponent {
         // 4. Regular chart canvas area (when no drawing tool is active)
         this.closeTimeScaleContextMenu();
         this.closePriceScaleContextMenu();
-        const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
+        let price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
+        let bar = null;
+        if (slotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(slotId);
+          bar = slot?.getCurrentBar ? slot.getCurrentBar() : (slot?.currentVisibleCandles?.[slot.currentVisibleCandles.length - 1]);
+        } else {
+          bar = this.store.simulator?.getCurrentBar();
+        }
+        const fallbackPrice = bar?.close || this.store.simulator?.getCurrentBar()?.close;
+        if (fallbackPrice && fallbackPrice > 0) {
+          if (!price || isNaN(price) || price <= 0 || (price / fallbackPrice > 2.5) || (price / fallbackPrice < 0.4)) {
+            price = fallbackPrice;
+          }
+        }
+
         if (price && price > 0) {
           this.targetSlotId = slotId;
           this.targetSymbol = symbol;
-          this.open(price, e.clientX, e.clientY);
+          this.open(price, e.clientX, e.clientY, slotId, symbol);
         }
       }
     });
 
-    this.chartContainer.addEventListener('mousemove', (e) => {
+    trackEl.addEventListener('mousemove', (e) => {
       const slotEl = e.target.closest('.chart-slot');
       if (!slotEl) {
         if (!this.isMenuOpen && this.priceAxisPlusBtn) this.priceAxisPlusBtn.style.display = 'none';
@@ -180,7 +211,7 @@ export class ChartOrderMenuComponent {
       }
       const slotId = Number(slotEl.getAttribute('data-slot-id')) || 0;
       const chart = slotId === 0 ? this.store.chart : this.store.multiChart?.slots?.get(slotId)?.chart;
-      const symbol = slotId === 0 ? this.store.get('currentSymbol') : this.store.multiChart?.slots?.get(slotId)?.symbol;
+      const symbol = slotId === 0 ? this.store.get('currentSymbol') : (this.store.multiChart?.slots?.get(slotId)?.symbol || this.store.get('currentSymbol'));
 
       const rect = slotEl.getBoundingClientRect();
       const localX = e.clientX - rect.left;
@@ -188,17 +219,32 @@ export class ChartOrderMenuComponent {
 
       // Only show + button if mouse is over or near the price scale (right edge)
       if (chart && localY >= 0 && localY <= rect.height - 28 && localX >= rect.width - 90) {
-        const price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
+        let price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
+        let bar = null;
+        if (slotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(slotId);
+          bar = slot?.getCurrentBar ? slot.getCurrentBar() : (slot?.currentVisibleCandles?.[slot.currentVisibleCandles.length - 1]);
+        } else {
+          bar = this.store.simulator?.getCurrentBar();
+        }
+        const fallbackPrice = bar?.close || this.store.simulator?.getCurrentBar()?.close;
+        if (fallbackPrice && fallbackPrice > 0) {
+          if (!price || isNaN(price) || price <= 0 || (price / fallbackPrice > 2.5) || (price / fallbackPrice < 0.4)) {
+            price = fallbackPrice;
+          }
+        }
+
         if (price && price > 0) {
           this.hoveredPrice = price;
           this.hoveredY = localY;
           this.targetSlotId = slotId;
           this.targetSymbol = symbol;
           if (this.priceAxisPlusBtn) {
-            const containerRect = this.chartContainer.getBoundingClientRect();
-            this.priceAxisPlusBtn.style.top = `${rect.top - containerRect.top + localY - 11}px`;
-            this.priceAxisPlusBtn.style.left = `${rect.right - containerRect.left - 48}px`;
+            this.priceAxisPlusBtn.style.position = 'fixed';
+            this.priceAxisPlusBtn.style.top = `${rect.top + localY - 11}px`;
+            this.priceAxisPlusBtn.style.left = `${rect.right - 56}px`;
             this.priceAxisPlusBtn.style.display = 'flex';
+            this.priceAxisPlusBtn.style.zIndex = '1000';
           }
           return;
         }
@@ -209,7 +255,7 @@ export class ChartOrderMenuComponent {
       }
     });
 
-    this.chartContainer.addEventListener('mouseleave', (e) => {
+    trackEl.addEventListener('mouseleave', (e) => {
       if (e.relatedTarget === this.priceAxisPlusBtn || (this.priceAxisPlusBtn && this.priceAxisPlusBtn.contains(e.relatedTarget))) {
         return;
       }
@@ -221,9 +267,19 @@ export class ChartOrderMenuComponent {
     if (this.priceAxisPlusBtn) {
       this.priceAxisPlusBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (this.targetSlotId !== undefined && this.store.multiChart && typeof this.store.multiChart.setActiveSlot === 'function') {
+          this.store.multiChart.setActiveSlot(this.targetSlotId);
+        }
         if (this.hoveredPrice && this.priceAxisPlusBtn) {
           const btnRect = this.priceAxisPlusBtn.getBoundingClientRect();
-          this.open(this.hoveredPrice, btnRect.left, btnRect.top);
+          this.open(this.hoveredPrice, btnRect.left, btnRect.top, this.targetSlotId, this.targetSymbol);
+        }
+      });
+
+      this.priceAxisPlusBtn.addEventListener('mouseleave', (e) => {
+        const trackEl = this.gridWrapper || this.chartContainer;
+        if (!this.isMenuOpen && e.relatedTarget && trackEl && !trackEl.contains(e.relatedTarget)) {
+          this.priceAxisPlusBtn.style.display = 'none';
         }
       });
     }
@@ -284,8 +340,20 @@ export class ChartOrderMenuComponent {
     if (this.btnMenuActionCustom) {
       this.btnMenuActionCustom.addEventListener('click', () => {
         this.close();
-        const simulator = this.store.simulator;
-        const currentBar = simulator ? simulator.getCurrentBar() : null;
+        let targetSymbol = this.targetSymbol || this.store.get('currentSymbol');
+        let currentBar = null;
+        if (this.targetSlotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+          if (slot) {
+            targetSymbol = slot.symbol || targetSymbol;
+            currentBar = slot.getCurrentBar ? slot.getCurrentBar() : (slot.currentVisibleCandles?.[slot.currentVisibleCandles.length - 1]);
+          }
+        }
+        if (!currentBar) {
+          const simulator = this.store.simulator;
+          currentBar = simulator ? simulator.getCurrentBar() : null;
+        }
+
         const currentPrice = currentBar ? currentBar.close : this.menuTargetPrice;
         const isAbove = this.menuTargetPrice >= currentPrice;
         const type = isAbove ? 'LIMIT' : 'STOP';
@@ -299,7 +367,7 @@ export class ChartOrderMenuComponent {
         if (inputLimitPrice) inputLimitPrice.value = this.menuTargetPrice.toFixed(2);
         if (inputLots) inputLots.value = this.menuLots;
 
-        eventBus.emit('orderpanel:custom', { price: this.menuTargetPrice, lots: this.menuLots, type });
+        eventBus.emit('orderpanel:custom', { price: this.menuTargetPrice, lots: this.menuLots, type, symbol: targetSymbol });
         showToast(`Заявка по ${this.menuTargetPrice.toFixed(2)} ₽ перенесена в панель ордеров`, 'info');
       });
     }
@@ -307,7 +375,10 @@ export class ChartOrderMenuComponent {
     if (this.btnMenuResetScale) {
       this.btnMenuResetScale.addEventListener('click', () => {
         this.close();
-        if (this.store.chartController) {
+        if (this.targetSlotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+          if (slot) slot.resetView();
+        } else if (this.store.chartController) {
           this.store.chartController.resetFullChartScale();
         }
       });
@@ -316,7 +387,10 @@ export class ChartOrderMenuComponent {
     if (this.btnTimeScaleReset) {
       this.btnTimeScaleReset.addEventListener('click', () => {
         this.closeTimeScaleContextMenu();
-        if (this.store.chartController) {
+        if (this.targetSlotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+          if (slot) slot.resetTimeScale();
+        } else if (this.store.chartController) {
           this.store.chartController.resetTimeScale();
         }
       });
@@ -334,7 +408,10 @@ export class ChartOrderMenuComponent {
     if (this.btnPriceScaleReset) {
       this.btnPriceScaleReset.addEventListener('click', () => {
         this.closePriceScaleContextMenu();
-        if (this.store.chartController) {
+        if (this.targetSlotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+          if (slot) slot.resetPriceScale();
+        } else if (this.store.chartController) {
           this.store.chartController.resetPriceScale();
         }
       });
@@ -342,10 +419,14 @@ export class ChartOrderMenuComponent {
 
     if (this.btnPriceScaleToggleAuto) {
       this.btnPriceScaleToggleAuto.addEventListener('click', () => {
-        if (this.store.chartController) {
-          const next = this.store.chartController.togglePriceAutoScale();
-          this.updatePriceScaleAutoCheck(next);
+        let next = true;
+        if (this.targetSlotId > 0) {
+          const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+          if (slot) next = slot.togglePriceAutoScale();
+        } else if (this.store.chartController) {
+          next = this.store.chartController.togglePriceAutoScale();
         }
+        this.updatePriceScaleAutoCheck(next);
         this.closePriceScaleContextMenu();
       });
     }
@@ -375,9 +456,10 @@ export class ChartOrderMenuComponent {
     }
   }
 
-  openPriceScaleContextMenu(clientX, clientY) {
+  openPriceScaleContextMenu(clientX, clientY, slotId = 0) {
     if (this.store.get('isSymbolLoading')) return;
     if (!this.priceScaleContextMenu) return;
+    this.targetSlotId = slotId;
 
     this.updatePriceScaleAutoCheck();
 
@@ -427,9 +509,15 @@ export class ChartOrderMenuComponent {
 
   updatePriceScaleAutoCheck(forcedVal) {
     if (!this.iconPriceScaleAutoCheck) return;
-    const isAuto = forcedVal !== undefined
-      ? forcedVal
-      : (this.store.chartController ? this.store.chartController.isPriceAutoScaleEnabled() : true);
+    let isAuto = true;
+    if (forcedVal !== undefined) {
+      isAuto = forcedVal;
+    } else if (this.targetSlotId > 0) {
+      const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+      isAuto = slot ? slot.isPriceAutoScaleEnabled() : true;
+    } else {
+      isAuto = this.store.chartController ? this.store.chartController.isPriceAutoScaleEnabled() : true;
+    }
 
     if (isAuto) {
       this.iconPriceScaleAutoCheck.classList.remove('hidden');
@@ -438,9 +526,10 @@ export class ChartOrderMenuComponent {
     }
   }
 
-  openTimeScaleContextMenu(clientX, clientY) {
+  openTimeScaleContextMenu(clientX, clientY, slotId = 0) {
     if (this.store.get('isSymbolLoading')) return;
     if (!this.timeScaleContextMenu) return;
+    this.targetSlotId = slotId;
 
     this.timeScaleContextMenu.style.visibility = 'hidden';
     this.timeScaleContextMenu.style.display = 'block';
@@ -487,9 +576,11 @@ export class ChartOrderMenuComponent {
     this.isTimeScaleMenuOpen = false;
   }
 
-  open(price, clientX, clientY) {
+  open(price, clientX, clientY, slotId = this.targetSlotId, symbol = this.targetSymbol) {
     if (this.store.get('isSymbolLoading')) return;
     if (!price || isNaN(price)) return;
+    this.targetSlotId = slotId !== undefined ? slotId : 0;
+    this.targetSymbol = symbol || (this.targetSlotId === 0 ? this.store.get('currentSymbol') : (this.store.multiChart?.slots?.get(this.targetSlotId)?.symbol || this.store.get('currentSymbol')));
     this.menuTargetPrice = Number(price);
     this.isMenuOpen = true;
 
@@ -567,20 +658,36 @@ export class ChartOrderMenuComponent {
       chip.classList.toggle('active', chipLots === this.menuLots);
     });
 
-    const lotSize = this.store.get('currentLotSize') || 1;
+    const targetSymbol = this.targetSymbol || this.store.get('currentSymbol');
+    let lotSize = this.store.get('currentLotSize') || 1;
+    let isFuture = this.store.get('currentInstrumentType') === 'future';
+
+    if (this.targetSlotId > 0 && this.store.portfolioDataService) {
+      const info = this.store.portfolioDataService.getInstrumentInfo(targetSymbol);
+      if (info) {
+        if (info.lot) lotSize = info.lot;
+        if (info.type === 'future') isFuture = true;
+      }
+    }
+
     const totalShares = this.menuLots * lotSize;
     const notional = totalShares * this.menuTargetPrice;
-    const isFuture = this.store.get('currentInstrumentType') === 'future';
     const unit = isFuture ? 'контр.' : 'шт.';
     if (this.menuSharesInfo) {
       this.menuSharesInfo.textContent = `${totalShares.toLocaleString('ru-RU')} ${unit} • ${formatMoney(notional)}`;
     }
 
-    const simulator = this.store.simulator;
-    const currentBar = simulator ? simulator.getCurrentBar() : null;
-    const currentPrice = currentBar ? currentBar.close : this.menuTargetPrice;
+    let currentPrice = this.menuTargetPrice;
+    if (this.targetSlotId > 0) {
+      const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+      const slotBar = slot?.getCurrentBar ? slot.getCurrentBar() : (slot?.currentVisibleCandles?.[slot.currentVisibleCandles.length - 1]);
+      if (slotBar && slotBar.close) currentPrice = slotBar.close;
+    } else {
+      const simulator = this.store.simulator;
+      const currentBar = simulator ? simulator.getCurrentBar() : null;
+      if (currentBar && currentBar.close) currentPrice = currentBar.close;
+    }
     const formattedPrice = formatRussianPrice(this.menuTargetPrice);
-    const currentSymbol = this.store.get('currentSymbol');
 
     if (this.menuTargetPrice >= currentPrice) {
       if (this.menuIconPrimary) {
@@ -588,7 +695,7 @@ export class ChartOrderMenuComponent {
         this.menuIconPrimary.textContent = '∨';
       }
       if (this.menuTextPrimary) {
-        this.menuTextPrimary.textContent = `Продать ${currentSymbol} Лимит ${this.menuLots} @ ${formattedPrice}`;
+        this.menuTextPrimary.textContent = `Продать ${targetSymbol} Лимит ${this.menuLots} @ ${formattedPrice}`;
       }
       if (this.btnMenuActionPrimary) {
         this.btnMenuActionPrimary.dataset.side = 'SELL';
@@ -600,7 +707,7 @@ export class ChartOrderMenuComponent {
         this.menuIconSecondary.textContent = '∧';
       }
       if (this.menuTextSecondary) {
-        this.menuTextSecondary.textContent = `Купить ${currentSymbol} Стоп ${this.menuLots} @ ${formattedPrice}`;
+        this.menuTextSecondary.textContent = `Купить ${targetSymbol} Стоп ${this.menuLots} @ ${formattedPrice}`;
       }
       if (this.btnMenuActionSecondary) {
         this.btnMenuActionSecondary.dataset.side = 'BUY';
@@ -612,7 +719,7 @@ export class ChartOrderMenuComponent {
         this.menuIconPrimary.textContent = '∧';
       }
       if (this.menuTextPrimary) {
-        this.menuTextPrimary.textContent = `Купить ${currentSymbol} Лимит ${this.menuLots} @ ${formattedPrice}`;
+        this.menuTextPrimary.textContent = `Купить ${targetSymbol} Лимит ${this.menuLots} @ ${formattedPrice}`;
       }
       if (this.btnMenuActionPrimary) {
         this.btnMenuActionPrimary.dataset.side = 'BUY';
@@ -624,7 +731,7 @@ export class ChartOrderMenuComponent {
         this.menuIconSecondary.textContent = '∨';
       }
       if (this.menuTextSecondary) {
-        this.menuTextSecondary.textContent = `Продать ${currentSymbol} Стоп ${this.menuLots} @ ${formattedPrice}`;
+        this.menuTextSecondary.textContent = `Продать ${targetSymbol} Стоп ${this.menuLots} @ ${formattedPrice}`;
       }
       if (this.btnMenuActionSecondary) {
         this.btnMenuActionSecondary.dataset.side = 'SELL';
@@ -643,7 +750,20 @@ export class ChartOrderMenuComponent {
     const paperAccount = this.store.paperAccount;
     if (!simulator || !paperAccount) return;
 
-    const currentBar = simulator.getCurrentBar();
+    let targetSymbol = this.targetSymbol || this.store.get('currentSymbol');
+    let currentBar = null;
+
+    if (this.targetSlotId > 0) {
+      const slot = this.store.multiChart?.slots?.get(this.targetSlotId);
+      if (slot) {
+        targetSymbol = slot.symbol || targetSymbol;
+        currentBar = slot.getCurrentBar ? slot.getCurrentBar() : (slot.currentVisibleCandles?.[slot.currentVisibleCandles.length - 1]);
+      }
+    }
+    if (!currentBar) {
+      currentBar = simulator.getCurrentBar();
+    }
+
     if (!currentBar) {
       showToast('Нет данных свечей для выставления заявки', 'error');
       return;
@@ -662,7 +782,16 @@ export class ChartOrderMenuComponent {
       }
     }
 
-    const targetSymbol = this.targetSymbol || this.store.get('currentSymbol');
+    let lotSize = this.store.get('currentLotSize') || 1;
+    let instrumentType = this.store.get('currentInstrumentType') || 'share';
+    if (this.targetSlotId > 0 && this.store.portfolioDataService) {
+      const info = this.store.portfolioDataService.getInstrumentInfo(targetSymbol);
+      if (info) {
+        if (info.lot) lotSize = info.lot;
+        if (info.type) instrumentType = info.type;
+      }
+    }
+
     const res = paperAccount.placeOrder({
       symbol: targetSymbol,
       side,
@@ -672,8 +801,8 @@ export class ChartOrderMenuComponent {
       sl: null,
       tp: null,
       time: currentBar ? currentBar.time : null,
-      lotSize: this.store.get('currentLotSize'),
-      instrumentType: this.store.get('currentInstrumentType') || 'share'
+      lotSize,
+      instrumentType
     });
 
     if (res.ok) {
