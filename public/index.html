@@ -179,6 +179,23 @@
               <svg class="layout-tile-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
             </div>
           </div>
+
+          <div class="layout-picker-divider"></div>
+          <div class="layout-picker-title">Синхронизация</div>
+          <div class="sync-toggles-list">
+            <label class="sync-toggle-row" title="Синхронное отображение вертикальной линии перекрестия на всех графиках">
+              <input type="checkbox" id="syncCrosshairCheckbox" checked>
+              <span class="sync-toggle-label">Перекрестие</span>
+            </label>
+            <label class="sync-toggle-row" title="Смена тикера применяется ко всем открытым графикам">
+              <input type="checkbox" id="syncSymbolCheckbox" checked>
+              <span class="sync-toggle-label">Символ</span>
+            </label>
+            <label class="sync-toggle-row" title="Синхронная прокрутка и масштабирование шкалы времени">
+              <input type="checkbox" id="syncTimeCheckbox">
+              <span class="sync-toggle-label">Время</span>
+            </label>
+          </div>
         </div>
       </div>
     </div>

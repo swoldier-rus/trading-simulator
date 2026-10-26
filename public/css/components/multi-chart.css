@@ -303,3 +303,47 @@
   fill: #2962ff;
   stroke: #2962ff;
 }
+
+/* Sync Controls in Dropdown */
+.layout-picker-divider {
+  height: 1px;
+  background: #2a2e39;
+  margin: 3px 0 5px 0;
+}
+
+.sync-toggles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sync-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #d1d4dc;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.sync-toggle-row:hover {
+  background: #2a2e39;
+  color: #ffffff;
+}
+
+.sync-toggle-row input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #2962ff;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.sync-toggle-label {
+  font-weight: 500;
+  letter-spacing: 0.1px;
+}

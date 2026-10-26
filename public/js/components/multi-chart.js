@@ -1,4 +1,4 @@
-// components/multi-chart.js - Multi-Chart Grid Layout & Slot Controller
+// components/multi-chart.js - Multi-Chart Grid Layout & Slot Controller with Sync Engine
 import { eventBus } from '../core/event-bus.js';
 import { marketDataService } from '../services/market-data.service.js';
 
@@ -148,6 +148,11 @@ export class ChartSlot {
       wickDownColor: '#f23645'
     });
 
+    // Register with LinkGroup for crosshair & viewport synchronization
+    if (this.manager.linkGroup && this.chart) {
+      this.manager.linkGroup.add(this.chart);
+    }
+
     // Auto-resize observer
     const handleResize = () => {
       if (this.chart && this.bodyEl) {
@@ -241,6 +246,11 @@ export class ChartSlot {
   }
 
   destroy() {
+    if (this.manager.linkGroup && this.chart) {
+      try {
+        this.manager.linkGroup.remove(this.chart);
+      } catch (e) {}
+    }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
@@ -270,6 +280,13 @@ export class MultiChartLayoutManager {
     this.btnLayoutPicker = null;
     this.dropdownEl = null;
 
+    // Sync preferences (defaults: crosshair=true, symbol=true, time=false)
+    this.syncCrosshair = localStorage.getItem('trading_simulator_sync_crosshair') !== 'false';
+    this.syncSymbol = localStorage.getItem('trading_simulator_sync_symbol') !== 'false';
+    this.syncTime = localStorage.getItem('trading_simulator_sync_time') === 'true';
+
+    this.linkGroup = null;
+
     this.init();
   }
 
@@ -277,6 +294,18 @@ export class MultiChartLayoutManager {
     this.wrapperEl = document.getElementById('chartGridWrapper');
     this.btnLayoutPicker = document.getElementById('btnLayoutPicker');
     this.dropdownEl = document.getElementById('layoutPickerDropdown');
+
+    // Initialize OpenAlgoCharts LinkGroup for cross-chart sync
+    if (window.OpenAlgoCharts && typeof window.OpenAlgoCharts.createLinkGroup === 'function') {
+      this.linkGroup = window.OpenAlgoCharts.createLinkGroup({
+        crosshair: this.syncCrosshair,
+        viewport: this.syncTime,
+        whenMissing: 'nearest'
+      });
+      if (this.store.chart) {
+        this.linkGroup.add(this.store.chart);
+      }
+    }
 
     this.initDropdown();
     this.bindEvents();
@@ -305,6 +334,7 @@ export class MultiChartLayoutManager {
       }
     });
 
+    // Layout preset tiles
     const tiles = this.dropdownEl.querySelectorAll('.layout-option-tile');
     tiles.forEach(tile => {
       tile.addEventListener('click', () => {
@@ -313,6 +343,41 @@ export class MultiChartLayoutManager {
         this.dropdownEl.style.display = 'none';
       });
     });
+
+    // Sync Toggles (Crosshair, Symbol, Time)
+    const cbCrosshair = document.getElementById('syncCrosshairCheckbox');
+    const cbSymbol = document.getElementById('syncSymbolCheckbox');
+    const cbTime = document.getElementById('syncTimeCheckbox');
+
+    if (cbCrosshair) {
+      cbCrosshair.checked = this.syncCrosshair;
+      cbCrosshair.addEventListener('change', () => {
+        this.syncCrosshair = cbCrosshair.checked;
+        localStorage.setItem('trading_simulator_sync_crosshair', String(this.syncCrosshair));
+        if (this.linkGroup) {
+          this.linkGroup.setOptions({ crosshair: this.syncCrosshair });
+        }
+      });
+    }
+
+    if (cbSymbol) {
+      cbSymbol.checked = this.syncSymbol;
+      cbSymbol.addEventListener('change', () => {
+        this.syncSymbol = cbSymbol.checked;
+        localStorage.setItem('trading_simulator_sync_symbol', String(this.syncSymbol));
+      });
+    }
+
+    if (cbTime) {
+      cbTime.checked = this.syncTime;
+      cbTime.addEventListener('change', () => {
+        this.syncTime = cbTime.checked;
+        localStorage.setItem('trading_simulator_sync_time', String(this.syncTime));
+        if (this.linkGroup) {
+          this.linkGroup.setOptions({ viewport: this.syncTime });
+        }
+      });
+    }
   }
 
   bindEvents() {
@@ -352,10 +417,19 @@ export class MultiChartLayoutManager {
     // When symbol changes
     eventBus.on('symbol:change', ({ ticker } = {}) => {
       if (!ticker) return;
-      if (this.activeSlotId > 0) {
-        const slot = this.slots.get(this.activeSlotId);
-        if (slot) {
-          slot.setSymbol(ticker, this.store.get('currentFigi') || '');
+      const figi = this.store.get('currentFigi') || '';
+      if (this.syncSymbol) {
+        // Sync symbol across ALL secondary slots (each keeping their own timeframe)
+        for (const slot of this.slots.values()) {
+          slot.setSymbol(ticker, figi);
+        }
+      } else {
+        // Symbol sync disabled: only update the active secondary slot
+        if (this.activeSlotId > 0) {
+          const slot = this.slots.get(this.activeSlotId);
+          if (slot) {
+            slot.setSymbol(ticker, figi);
+          }
         }
       }
     });
@@ -375,6 +449,11 @@ export class MultiChartLayoutManager {
         const l = tile.getAttribute('data-layout');
         tile.classList.toggle('active', l === layoutPreset);
       });
+    }
+
+    // Ensure slot 0 is in linkGroup
+    if (this.linkGroup && this.store.chart && !this.linkGroup.has(this.store.chart)) {
+      this.linkGroup.add(this.store.chart);
     }
 
     const requiredSlots = this.getRequiredSlotCount(layoutPreset);
