@@ -347,3 +347,35 @@
   font-weight: 500;
   letter-spacing: 0.1px;
 }
+
+/* Replay Indicator Pill in Slot Badge */
+.badge-replay-tag {
+  display: none;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(41, 98, 255, 0.22);
+  color: #2962ff;
+  border: 1px solid rgba(41, 98, 255, 0.45);
+  letter-spacing: 0.3px;
+  margin-left: 2px;
+}
+
+.chart-slot.in-replay .badge-replay-tag {
+  display: inline-block;
+  animation: replayPulse 2.5s infinite ease-in-out;
+}
+
+@keyframes replayPulse {
+  0%, 100% {
+    opacity: 0.9;
+    background: rgba(41, 98, 255, 0.22);
+  }
+  50% {
+    opacity: 1;
+    background: rgba(41, 98, 255, 0.4);
+    box-shadow: 0 0 6px rgba(41, 98, 255, 0.4);
+  }
+}

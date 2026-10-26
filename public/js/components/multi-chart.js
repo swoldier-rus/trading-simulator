@@ -1,6 +1,7 @@
-// components/multi-chart.js - Multi-Chart Grid Layout & Slot Controller with Sync Engine
+// components/multi-chart.js - Multi-Chart Grid Layout & Slot Controller with MTF Replay & Sync Engine
 import { eventBus } from '../core/event-bus.js';
 import { marketDataService } from '../services/market-data.service.js';
+import { binarySearchCandleFloorIndex, timeframeToSeconds, showToast } from '../core/utils.js';
 
 export class ChartSlot {
   constructor(options) {
@@ -21,6 +22,10 @@ export class ChartSlot {
     this.isMaximized = false;
     this.candlesCount = 0;
 
+    // MTF Replay Data Caches
+    this.allCandles = [];
+    this.currentVisibleCandles = [];
+
     this.createDom();
   }
 
@@ -36,6 +41,7 @@ export class ChartSlot {
           <span class="badge-symbol">${this.symbol}</span>
           <span>•</span>
           <span class="badge-tf">${this.formatTfLabel(this.timeframe)}</span>
+          <span class="badge-replay-tag">Replay</span>
           <div class="slot-tf-dropdown">
             <div class="slot-tf-item ${this.timeframe === '1m' ? 'active' : ''}" data-tf="1m">1м</div>
             <div class="slot-tf-item ${this.timeframe === '5m' ? 'active' : ''}" data-tf="5m">5м</div>
@@ -153,6 +159,78 @@ export class ChartSlot {
       this.manager.linkGroup.add(this.chart);
     }
 
+    // Allow clicking on secondary charts to choose Jump to Bar start point
+    this.chart.subscribeClick((param) => {
+      const isSelecting = this.store.fsm ? this.store.fsm.isSelectingJumpBar() : this.store.get('isSelectingJumpBar');
+      if (isSelecting) {
+        let targetTime = null;
+        if (param && typeof param.time === 'number') {
+          targetTime = param.time;
+        } else if (param?.point?.x !== undefined && typeof this.chart.coordinateToTime === 'function') {
+          targetTime = this.chart.coordinateToTime(param.point.x);
+        }
+        if (targetTime) {
+          if (this.store.fsm) {
+            this.store.fsm.completeJumpSelection(targetTime);
+          } else {
+            this.store.set('isSelectingJumpBar', false);
+            const btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
+            if (btnReplayStartPoint) btnReplayStartPoint.classList.remove('active');
+          }
+          const sim = this.store.simulator;
+          if (sim) {
+            sim.jumpToBar(targetTime);
+            eventBus.emit('chart:reset_state_preserving_zoom', 12);
+            eventBus.emit('replay:scrubbed');
+            if (this.store.sessionService) {
+              this.store.sessionService.resetSession({ newTime: targetTime });
+            }
+          }
+          const cur = sim ? sim.getCurrentBar() : null;
+          const timeFormatted = cur ? new Date(cur.time * 1000).toLocaleString('ru-RU') : '';
+          showToast(`Точка симуляции установлена: ${timeFormatted}! Торговый счет сброшен.`, 'success');
+        }
+      }
+    });
+
+    // History loader for backwards infinite scrolling on secondary charts
+    if (typeof this.chart.setHistoryLoader === 'function') {
+      this.chart.setHistoryLoader(async () => {
+        if (!this.allCandles || this.allCandles.length === 0) {
+          this.chart.historyLoadComplete();
+          return;
+        }
+        const oldest = this.allCandles[0];
+        try {
+          const res = await marketDataService.getCandles(
+            this.symbol,
+            this.figi,
+            this.timeframe,
+            300,
+            oldest.time - 1,
+            null,
+            { silent: true }
+          );
+          if (res && res.candles && res.candles.length > 0) {
+            const fresh = res.candles.filter(b => b.time < oldest.time);
+            if (fresh.length > 0) {
+              this.allCandles = [...fresh, ...this.allCandles];
+              if (this.manager.isReplayActive()) {
+                this.syncToReplayTime(this.manager.getCurrentSimulationTime(), null, false);
+              } else {
+                this.currentVisibleCandles = [...this.allCandles];
+                this.mainSeries.setData(this.allCandles);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[ChartSlot ${this.id}] History loader error:`, e);
+        } finally {
+          this.chart.historyLoadComplete();
+        }
+      });
+    }
+
     // Auto-resize observer
     const handleResize = () => {
       if (this.chart && this.bodyEl) {
@@ -179,14 +257,192 @@ export class ChartSlot {
     try {
       const res = await marketDataService.getCandles(this.symbol, this.figi, this.timeframe, 1200, null, null, { silent: true });
       if (res && res.candles && res.candles.length > 0) {
+        this.allCandles = res.candles;
         this.candlesCount = res.candles.length;
-        this.mainSeries.setData(res.candles);
-        if (this.chart) {
-          this.chart.fitContent();
+
+        // If Replay is currently active, slice immediately to simulation time without showing the future
+        if (this.manager.isReplayActive()) {
+          this.slotEl.classList.add('in-replay');
+          const simTime = this.manager.getCurrentSimulationTime();
+          if (simTime) {
+            this.syncToReplayTime(simTime, null, false);
+          } else {
+            this.currentVisibleCandles = [...this.allCandles];
+            this.mainSeries.setData(this.allCandles);
+          }
+        } else {
+          this.slotEl.classList.remove('in-replay');
+          this.currentVisibleCandles = [...this.allCandles];
+          this.mainSeries.setData(this.allCandles);
+          if (this.chart) {
+            this.chart.fitContent();
+          }
         }
       }
     } catch (err) {
       console.warn(`[ChartSlot ${this.id}] Failed to load candles:`, err);
+    }
+  }
+
+  // MTF Replay Synchronizer: Slices history and synthesizes forming bar without lookahead bias
+  syncToReplayTime(simTime, currentTickPrice = null, isIncremental = false) {
+    if (!this.mainSeries || !this.allCandles || this.allCandles.length === 0) return;
+    if (!simTime) return;
+
+    this.slotEl.classList.add('in-replay');
+
+    const tfSlot = (this.timeframe || '1d').toLowerCase();
+    const tfSim = (this.store.get('currentTimeframe') || '1h').toLowerCase();
+    const stepSlot = timeframeToSeconds(tfSlot);
+    const stepSim = timeframeToSeconds(tfSim);
+
+    // HIGHER TIMEFRAME (e.g. Slot is 1D / 4H, Sim is 15M / 1H)
+    if (stepSlot > stepSim) {
+      const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
+      if (floorIdx < 0) {
+        this._applyVisibleCandles([], isIncremental);
+        return;
+      }
+
+      const targetCandle = this.allCandles[floorIdx];
+      const completedCandles = this.allCandles.slice(0, floorIdx);
+
+      // Check if targetCandle is in-progress / forming at simTime
+      const isForming = simTime >= targetCandle.time && simTime < targetCandle.time + stepSlot;
+
+      let newVisible;
+      if (isForming) {
+        // Synthesize forming bar from fine-grained simulator candles without lookahead bias
+        const isSameSymbol = (this.symbol || '').toUpperCase() === (this.store.get('currentSymbol') || '').toUpperCase();
+        let formingBar;
+
+        if (isSameSymbol && this.store.simulator) {
+          const simCandles = this.store.simulator.getVisibleCandles();
+          const subBars = simCandles.filter(b => b.time >= targetCandle.time && b.time <= simTime);
+
+          if (subBars.length > 0) {
+            const open = subBars[0].open;
+            let high = subBars[0].high;
+            let low = subBars[0].low;
+            let volume = 0;
+            for (let i = 0; i < subBars.length; i++) {
+              const b = subBars[i];
+              if (b.high > high) high = b.high;
+              if (b.low < low) low = b.low;
+              volume += (b.volume || 0);
+            }
+            let close = currentTickPrice !== null ? currentTickPrice : subBars[subBars.length - 1].close;
+            if (close > high) high = close;
+            if (close < low) low = close;
+
+            formingBar = {
+              time: targetCandle.time,
+              open,
+              high,
+              low,
+              close,
+              volume
+            };
+          } else {
+            const price = currentTickPrice !== null ? currentTickPrice : targetCandle.open;
+            formingBar = {
+              time: targetCandle.time,
+              open: targetCandle.open,
+              high: Math.max(targetCandle.open, price),
+              low: Math.min(targetCandle.open, price),
+              close: price,
+              volume: 0
+            };
+          }
+        } else {
+          // Different symbol or independent ticker
+          const price = currentTickPrice !== null ? currentTickPrice : targetCandle.open;
+          formingBar = {
+            time: targetCandle.time,
+            open: targetCandle.open,
+            high: Math.max(targetCandle.open, price),
+            low: Math.min(targetCandle.open, price),
+            close: price,
+            volume: 0
+          };
+        }
+        newVisible = [...completedCandles, formingBar];
+      } else {
+        // targetCandle is fully completed
+        newVisible = this.allCandles.slice(0, floorIdx + 1);
+      }
+
+      this._applyVisibleCandles(newVisible, isIncremental);
+    } else {
+      // EQUAL OR LOWER TIMEFRAME (e.g. Slot is 15M / 1H, Sim is 1H / 1D)
+      const floorIdx = binarySearchCandleFloorIndex(this.allCandles, simTime);
+      if (floorIdx < 0) {
+        this._applyVisibleCandles([], isIncremental);
+        return;
+      }
+
+      const newVisible = this.allCandles.slice(0, floorIdx + 1);
+
+      if (currentTickPrice !== null && newVisible.length > 0) {
+        const last = newVisible[newVisible.length - 1];
+        if (last.time === simTime) {
+          const updatedLast = {
+            ...last,
+            close: currentTickPrice,
+            high: Math.max(last.high, currentTickPrice),
+            low: Math.min(last.low, currentTickPrice)
+          };
+          newVisible[newVisible.length - 1] = updatedLast;
+        }
+      }
+
+      this._applyVisibleCandles(newVisible, isIncremental);
+    }
+  }
+
+  // Optimized GPU series update for 60 FPS playback
+  _applyVisibleCandles(newVisible, isIncremental) {
+    if (!newVisible || newVisible.length === 0) {
+      this.currentVisibleCandles = [];
+      if (this.mainSeries) this.mainSeries.setData([]);
+      return;
+    }
+
+    const prevLen = this.currentVisibleCandles.length;
+    const newLen = newVisible.length;
+
+    if (isIncremental && prevLen > 0) {
+      const lastBar = newVisible[newLen - 1];
+      if (newLen === prevLen) {
+        // In-place update of current forming candle
+        this.currentVisibleCandles[prevLen - 1] = lastBar;
+        try {
+          this.mainSeries.update(lastBar);
+          return;
+        } catch (e) {}
+      } else if (newLen === prevLen + 1) {
+        // Append newly opened bar
+        this.currentVisibleCandles.push(lastBar);
+        try {
+          this.mainSeries.update(lastBar);
+          return;
+        } catch (e) {}
+      }
+    }
+
+    // Full series replacement (jump, scrub, step backward, or initial cut)
+    this.currentVisibleCandles = newVisible;
+    if (this.mainSeries) {
+      this.mainSeries.setData(newVisible);
+    }
+  }
+
+  // Restore full dataset on replay exit
+  restoreFullData() {
+    this.slotEl.classList.remove('in-replay');
+    if (this.mainSeries && this.allCandles && this.allCandles.length > 0) {
+      this.currentVisibleCandles = [...this.allCandles];
+      this.mainSeries.setData(this.allCandles);
     }
   }
 
@@ -265,6 +521,8 @@ export class ChartSlot {
     }
     this.chart = null;
     this.mainSeries = null;
+    this.allCandles = [];
+    this.currentVisibleCandles = [];
   }
 }
 
@@ -380,6 +638,40 @@ export class MultiChartLayoutManager {
     }
   }
 
+  isReplayActive() {
+    return !!(this.store.simulator && this.store.simulator.isReplayActive);
+  }
+
+  getCurrentSimulationTime() {
+    const cur = this.store.simulator?.getCurrentBar();
+    return cur ? cur.time : null;
+  }
+
+  syncAllSlotsToReplay(simTime, currentTickPrice = null, isIncremental = false) {
+    if (!simTime) return;
+
+    // Update Slot 0 replay indicator
+    const slot0 = document.getElementById('chartSlot0');
+    if (slot0) {
+      slot0.classList.add('in-replay');
+    }
+
+    for (const slot of this.slots.values()) {
+      slot.syncToReplayTime(simTime, currentTickPrice, isIncremental);
+    }
+  }
+
+  restoreAllSlotsFullData() {
+    const slot0 = document.getElementById('chartSlot0');
+    if (slot0) {
+      slot0.classList.remove('in-replay');
+    }
+
+    for (const slot of this.slots.values()) {
+      slot.restoreFullData();
+    }
+  }
+
   bindEvents() {
     // When slot 0 is clicked
     const slot0 = document.getElementById('chartSlot0');
@@ -433,6 +725,46 @@ export class MultiChartLayoutManager {
         }
       }
     });
+
+    // MTF Replay Coordinator: synchronize all secondary slots on replay ui update
+    eventBus.on('replay:ui-update', ({ time, isPlaying, subTickInfo }) => {
+      if (!this.isReplayActive()) return;
+      if (time) {
+        const isIncremental = isPlaying || (subTickInfo?.isSubTick);
+        const tickPrice = subTickInfo?.tickPrice ?? null;
+        this.syncAllSlotsToReplay(time, tickPrice, isIncremental);
+      }
+    });
+
+    // MTF Replay Coordinator: synchronize all secondary slots on bar tick
+    eventBus.on('bar:tick', (candle) => {
+      if (!this.isReplayActive()) return;
+      if (candle && candle.time) {
+        this.syncAllSlotsToReplay(candle.time, candle.close, true);
+      }
+    });
+
+    // MTF Replay Coordinator: toggle full data vs sliced data on replay state change
+    eventBus.on('replay:state-change', (isActive) => {
+      if (isActive) {
+        const simTime = this.getCurrentSimulationTime();
+        if (simTime) {
+          this.syncAllSlotsToReplay(simTime, null, false);
+        }
+      } else {
+        this.restoreAllSlotsFullData();
+      }
+    });
+
+    // MTF Replay Coordinator: on slider scrub or jump
+    eventBus.on('replay:scrubbed', () => {
+      if (this.isReplayActive()) {
+        const simTime = this.getCurrentSimulationTime();
+        if (simTime) {
+          this.syncAllSlotsToReplay(simTime, null, false);
+        }
+      }
+    });
   }
 
   setLayout(layoutPreset) {
@@ -462,6 +794,14 @@ export class MultiChartLayoutManager {
     // If active slot was closed, switch focus to slot 0
     if (this.activeSlotId >= requiredSlots) {
       this.setActiveSlot(0);
+    }
+
+    // If replay is active, ensure all slots are immediately synced to simulation time
+    if (this.isReplayActive()) {
+      const simTime = this.getCurrentSimulationTime();
+      if (simTime) {
+        this.syncAllSlotsToReplay(simTime, null, false);
+      }
     }
 
     // Trigger resize on all charts
