@@ -48,7 +48,7 @@
 
   /* Z-Index Hierarchy */
   --z-base: 1;
-  --z-header: 100;
+  --z-header: 150;
   --z-left-rail: 90;
   --z-side-panel: 95;
   --z-bottom-dock: 80;

@@ -152,6 +152,35 @@
           </svg>
         </button>
       </div>
+
+      <div class="tv-divider"></div>
+
+      <!-- Multi-Chart Layout Picker -->
+      <div class="layout-picker-group">
+        <button class="tv-btn tv-btn-layout" id="btnLayoutPicker" title="Выбрать сетку окон (1, 2, 4 графика)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="layoutPickerIcon">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+          </svg>
+          <span style="font-size: 10px; color: #787b86;">▼</span>
+        </button>
+        <div class="layout-picker-dropdown" id="layoutPickerDropdown" style="display: none;">
+          <div class="layout-picker-title">Раскладка окон</div>
+          <div class="layout-picker-grid">
+            <div class="layout-option-tile active" data-layout="1x1" title="1 график">
+              <svg class="layout-tile-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            </div>
+            <div class="layout-option-tile" data-layout="1x2" title="2 графика рядом">
+              <svg class="layout-tile-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+            </div>
+            <div class="layout-option-tile" data-layout="2x1" title="2 графика по вертикали">
+              <svg class="layout-tile-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="8" rx="1.5"/><rect x="3" y="13" width="18" height="8" rx="1.5"/></svg>
+            </div>
+            <div class="layout-option-tile" data-layout="2x2" title="4 графика (2x2)">
+              <svg class="layout-tile-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Right: Status & Settings -->
@@ -470,7 +499,21 @@
 
       <!-- Chart Pane -->
       <div class="chart-container">
-        <div id="chart"></div>
+        <div class="chart-grid-wrapper layout-1x1" id="chartGridWrapper">
+          <div class="chart-slot active" id="chartSlot0" data-slot-id="0">
+            <div class="chart-slot-header">
+              <div class="chart-slot-badge" id="slotBadge0" title="Текущий инструмент и таймфрейм">
+                <span class="badge-symbol" id="slotBadgeSymbol0">SBER</span>
+                <span>•</span>
+                <span class="badge-tf" id="slotBadgeTf0">1ч</span>
+              </div>
+              <button class="chart-slot-btn btn-slot-maximize" title="Развернуть/восстановить окно">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                </svg>
+              </button>
+            </div>
+            <div id="chart"></div>
         <div id="chartZoomBoxOverlay" class="chart-zoom-box-overlay" style="display: none;"></div>
 
         <!-- Interactive Drag & Drop Trade Lines Overlay (Positions, SL, TP, Orders) -->
@@ -632,6 +675,8 @@
             <span class="menu-item-text">Настройки...</span>
           </button>
         </div>
+          </div><!-- #chartSlot0 -->
+        </div><!-- #chartGridWrapper -->
       </div>
 
       <!-- Right Side TradingView Order Panel (Matching User's Screenshot) -->

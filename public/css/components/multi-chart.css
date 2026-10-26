@@ -1,0 +1,305 @@
+/* multi-chart.css - Multi-Chart Grid Layout & Slot Management */
+
+/* Chart Grid Wrapper inside .chart-container */
+.chart-grid-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  gap: 2px;
+  background: #1e222d;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Layout Grid Presets */
+.chart-grid-wrapper.layout-1x1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.chart-grid-wrapper.layout-1x2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.chart-grid-wrapper.layout-2x1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.chart-grid-wrapper.layout-2x2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* Individual Chart Slot */
+.chart-slot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #131722;
+  box-sizing: border-box;
+  transition: box-shadow 0.15s ease;
+}
+
+/* Focused / Active Slot Outline */
+.chart-slot.active {
+  box-shadow: inset 0 0 0 1.5px #2962ff;
+  z-index: 2;
+}
+
+/* Maximized Slot in Grid */
+.chart-slot.maximized {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 100 !important;
+}
+
+/* Slot Canvas Host */
+.chart-slot .chart-slot-body {
+  width: 100%;
+  height: 100%;
+  display: block;
+  position: relative;
+}
+
+/* Slot Mini Header / Overlay Badge */
+.chart-slot-header {
+  position: absolute;
+  top: 8px;
+  right: 65px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.chart-slot-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 34, 45, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(42, 46, 57, 0.8);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d1d4dc;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.chart-slot-badge:hover {
+  background: #2a2e39;
+  border-color: #363a45;
+  color: #ffffff;
+}
+
+.chart-slot-badge .badge-symbol {
+  color: #2962ff;
+  font-weight: 700;
+}
+
+.chart-slot-badge .badge-tf {
+  color: #787b86;
+  font-weight: 600;
+}
+
+.chart-slot-badge:hover .badge-tf {
+  color: #d1d4dc;
+}
+
+.chart-slot-btn {
+  background: rgba(30, 34, 45, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(42, 46, 57, 0.8);
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: #787b86;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.chart-slot-btn:hover {
+  background: #2a2e39;
+  border-color: #363a45;
+  color: #ffffff;
+}
+
+/* Secondary Slot Legend */
+.secondary-slot-legend {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 15;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+  font-size: 11px;
+}
+
+.secondary-slot-legend .sec-legend-title {
+  font-weight: 700;
+  color: #2962ff;
+}
+
+.secondary-slot-legend .sec-legend-tf {
+  color: #787b86;
+  font-weight: 600;
+}
+
+.secondary-slot-legend .sec-legend-price {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Quick Timeframe Dropdown for Slot Badge */
+.slot-tf-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  min-width: 70px;
+}
+
+.slot-tf-dropdown.show {
+  display: flex;
+}
+
+.slot-tf-item {
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d1d4dc;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.slot-tf-item:hover {
+  background: #2a2e39;
+  color: #ffffff;
+}
+
+.slot-tf-item.active {
+  background: #2962ff;
+  color: #ffffff;
+}
+
+/* Layout Picker Dropdown in Topbar */
+.layout-picker-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tv-btn-layout {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+}
+
+.layout-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  padding: 8px 10px;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 175px;
+}
+
+.layout-picker-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #787b86;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #2a2e39;
+}
+
+.layout-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.layout-option-tile {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #2a2e39;
+  background: #131722;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+
+.layout-option-tile:hover {
+  border-color: #2962ff;
+  background: rgba(41, 98, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.layout-option-tile.active {
+  border-color: #2962ff;
+  background: rgba(41, 98, 255, 0.28);
+  box-shadow: 0 0 6px rgba(41, 98, 255, 0.4);
+}
+
+/* SVG icons inside layout tiles */
+.layout-tile-icon {
+  width: 22px;
+  height: 22px;
+  color: #787b86;
+  fill: #787b86;
+  stroke: #787b86;
+  transition: color 0.15s ease, fill 0.15s ease, stroke 0.15s ease;
+}
+
+.layout-option-tile:hover .layout-tile-icon,
+.layout-option-tile.active .layout-tile-icon {
+  color: #2962ff;
+  fill: #2962ff;
+  stroke: #2962ff;
+}

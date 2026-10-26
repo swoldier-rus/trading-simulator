@@ -34,6 +34,7 @@ import { SessionBreaksOverlayComponent } from './components/session-breaks-overl
 import { WatchlistComponent } from './components/watchlist.js';
 import { IndicatorSettingsModalComponent } from './components/indicator-settings-modal.js';
 import { HistoryStartMarkerComponent } from './components/history-start-marker.js';
+import { MultiChartLayoutManager } from './components/multi-chart.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Core Engines
@@ -65,6 +66,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const watchlist = new WatchlistComponent(store);
   const indicatorSettingsModal = new IndicatorSettingsModalComponent(store);
   const historyStartMarker = new HistoryStartMarkerComponent(store);
+  const multiChart = new MultiChartLayoutManager(store);
 
   store.chartController = chartController;
   store.replayBar = replayBar;
@@ -83,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   store.zoomController = zoomController;
   store.indicatorSettingsModal = indicatorSettingsModal;
   store.historyStartMarker = historyStartMarker;
+  store.multiChart = multiChart;
   store.indicatorManager = new IndicatorManager(store.chart);
   store.components = {
     chartController,
@@ -471,6 +474,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event bus reactions
   eventBus.on('timeframe:change', async ({ newTf, prevTf }) => {
+    // Update Slot 0 badge
+    const badgeTf = document.getElementById('slotBadgeTf0');
+    if (badgeTf) {
+      const map = { '1m': '1м', '5m': '5м', '15m': '15м', '1h': '1ч', '4h': '4ч', '1d': '1Д', '1w': '1Н' };
+      badgeTf.textContent = map[newTf?.toLowerCase()] || newTf;
+    }
+
+    // If active slot is a secondary slot (> 0), it updates its own data; do not reload primary chart
+    if (store.multiChart && store.multiChart.activeSlotId > 0) {
+      return;
+    }
+
     const barInfo = chartController.getLastChartBarInfo();
     let targetSec = barInfo.time;
     if (targetSec && prevTf === '1d' && newTf !== '1d') {
@@ -487,6 +502,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   eventBus.on('symbol:change', async ({ prevSymbol, ticker } = {}) => {
+    const badgeSym = document.getElementById('slotBadgeSymbol0');
+    if (badgeSym && ticker) {
+      badgeSym.textContent = ticker;
+    }
     setChartLoadingState(true, { fullReset: true });
     try {
       if (prevSymbol && simulator && simulator.allCandles && simulator.allCandles.length > 0) {
@@ -617,7 +636,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       rightRail,
       zoomController,
       indicatorSettingsModal,
-      historyStartMarker
+      historyStartMarker,
+      multiChart
     },
     loadCandles,
     prefetchSubsequentBars,

@@ -14,4 +14,5 @@
 @import url('./components/watchlist.css') layer(components);
 @import url('./components/indicator-settings-modal.css') layer(components);
 @import url('./components/history-start-marker.css') layer(components);
+@import url('./components/multi-chart.css') layer(components);
 @import url('./components/modals.css') layer(components);

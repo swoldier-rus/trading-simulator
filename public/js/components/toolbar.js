@@ -205,6 +205,18 @@ export class ToolbarComponent {
         eventBus.emit('timeframe:change', { newTf, prevTf: activeTf });
       };
     });
+
+    eventBus.on('toolbar:sync_timeframe', (tf) => {
+      if (!tf) return;
+      this.timeframeButtons.forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-tf') === tf.toLowerCase());
+      });
+      const legendTf = document.getElementById('legendTF');
+      if (legendTf) {
+        const map = { '1m': '1м', '5m': '5м', '15m': '15м', '1h': '1ч', '4h': '4ч', '1d': '1Д', '1w': '1Н' };
+        legendTf.textContent = map[tf.toLowerCase()] || tf;
+      }
+    });
   }
 
   initChartTypeSelector() {
