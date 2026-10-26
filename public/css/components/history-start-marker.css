@@ -2,7 +2,7 @@
 
 .chart-history-start-marker {
   position: absolute;
-  bottom: 2px;
+  bottom: 26px;
   transform: translateX(-50%);
   z-index: 45;
   display: none;
@@ -14,22 +14,23 @@
 }
 
 .chart-history-start-marker .dino-icon-svg {
-  width: 20px;
-  height: 20px;
-  color: #26a69a;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease;
+  width: 44px;
+  height: 36px;
+  color: #ffffff;
+  stroke: #ffffff;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.9));
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
 }
 
 .chart-history-start-marker:hover .dino-icon-svg {
-  color: #2dd5c4;
-  transform: scale(1.18) translateY(-2px);
+  transform: scale(1.14) translateY(-2px);
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5)) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.9));
 }
 
 /* Tooltip */
 .chart-history-start-marker .dino-tooltip {
   position: absolute;
-  bottom: 26px;
+  bottom: 42px;
   left: 50%;
   transform: translateX(-50%);
   background: #1e222d;

@@ -1,15 +1,15 @@
 // components/history-start-marker.js - TradingView-style Dinosaur Marker at Start of Instrument History
 import { eventBus } from '../core/event-bus.js';
 
-const DINO_PIXEL_SVG = `
-<svg class="dino-icon-svg" viewBox="0 0 24 24" width="20" height="20" fill="none">
-  <path fill="currentColor" d="
-    M14 2h6v2h-6z M13 4h8v4h-2V6h-6z M12 6h2v2h-2z M12 8h8v2h-1v2h-7z
-    M11 10h2v4h-2z M10 12h2v4h-2z M9 13h2v3H9z M8 14h2v3H8z M7 15h2v3H7z
-    M6 16h2v3H6z M5 17h2v2H5z M13 14h2v2h-2z M12 16h3v2h-3z
-    M11 18h2v4h-2z M14 18h2v3h-2z M10 22h3v1h-3z M14 21h2v1h-2z
-    M17 6h1v1h-1z
-  "/>
+const BRONTO_OUTLINE_SVG = `
+<svg class="dino-icon-svg" viewBox="0 0 34 28" width="44" height="36" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M31 3h-2.5c-1.8 0-3 1.2-3.8 2.8l-3 7.4c-.6 1.4-1.9 2.2-3.5 2.2H14c-3.8 0-7 2.2-8.5 5.5l-3.5 4"/>
+  <path d="M8 21v5"/>
+  <path d="M12 21v5"/>
+  <path d="M18 20v6"/>
+  <path d="M22 19v7"/>
+  <path d="M8 21c2.5-1 6.5-1 10-1 2.5 0 4 .5 5 1"/>
+  <circle cx="29" cy="4.5" r="0.8" fill="#ffffff"/>
 </svg>
 `;
 
@@ -41,7 +41,7 @@ export class HistoryStartMarkerComponent {
       marker.id = 'chartHistoryStartMarker';
       marker.className = 'chart-history-start-marker';
       marker.innerHTML = `
-        ${DINO_PIXEL_SVG}
+        ${BRONTO_OUTLINE_SVG}
         <div class="dino-tooltip">
           <div class="dino-tooltip-title">
             <span>🦕</span>
