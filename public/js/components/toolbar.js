@@ -238,8 +238,6 @@ export class ToolbarComponent {
         this.chartTypeItems.forEach(i => i.classList.remove('active'));
         item.classList.add('active');
 
-        this.store.set('currentChartType', type);
-
         if (this.chartTypeIcon && iconSpan) {
           this.chartTypeIcon.innerHTML = iconSpan.innerHTML;
         }
@@ -248,15 +246,38 @@ export class ToolbarComponent {
         }
         this.chartTypeDropdown.style.display = 'none';
 
-        const chart = this.store.chart;
-        const mainSeries = this.store.mainSeries;
-        if (chart && mainSeries && typeof chart.setSeriesType === 'function') {
-          chart.setSeriesType(mainSeries, type);
-          if (this.store.chartController && typeof this.store.chartController.applySavedSeriesStyle === 'function') {
-            this.store.chartController.applySavedSeriesStyle(type);
+        if (this.store.multiChart && typeof this.store.multiChart.setChartType === 'function') {
+          this.store.multiChart.setChartType(type);
+        } else {
+          this.store.set('currentChartType', type);
+          const chart = this.store.chart;
+          const mainSeries = this.store.mainSeries;
+          if (chart && mainSeries && typeof chart.setSeriesType === 'function') {
+            chart.setSeriesType(mainSeries, type);
+            if (this.store.chartController && typeof this.store.chartController.applySavedSeriesStyle === 'function') {
+              this.store.chartController.applySavedSeriesStyle(type);
+            }
           }
         }
       };
+    });
+
+    // Event listener for syncing chart type dropdown when slot or manager changes
+    eventBus.on('toolbar:sync_chart_type', (type) => {
+      if (!type || !this.chartTypeDropdown) return;
+      const activeItem = this.chartTypeDropdown.querySelector(`.chart-type-item[data-type="${type}"]`);
+      if (activeItem) {
+        this.chartTypeItems.forEach(i => i.classList.remove('active'));
+        activeItem.classList.add('active');
+        const iconSpan = activeItem.querySelector('.chart-type-icon');
+        const shortText = activeItem.getAttribute('data-short') || activeItem.querySelector('.chart-type-label')?.textContent.trim() || type;
+        if (this.chartTypeIcon && iconSpan) {
+          this.chartTypeIcon.innerHTML = iconSpan.innerHTML;
+        }
+        if (this.chartTypeText && shortText) {
+          this.chartTypeText.textContent = shortText;
+        }
+      }
     });
 
     // Chart Style Settings button

@@ -13,6 +13,7 @@ export class ChartSlot {
     this.symbol = options.symbol || this.store.get('currentSymbol') || 'SBER';
     this.figi = options.figi || this.store.get('currentFigi') || '';
     this.timeframe = options.timeframe || '1d';
+    this.chartType = options.chartType || this.store.get('currentChartType') || 'candlestick';
 
     this.chart = null;
     this.mainSeries = null;
@@ -168,6 +169,15 @@ export class ChartSlot {
       wickUpColor: '#089981',
       wickDownColor: '#f23645'
     });
+
+    if (this.chartType !== 'candlestick' && typeof this.chart.setSeriesType === 'function') {
+      try {
+        this.chart.setSeriesType(this.mainSeries, this.chartType);
+      } catch (e) {
+        console.warn(`[ChartSlot ${this.id}] Failed to set series type:`, e);
+      }
+    }
+    this.applySeriesStyle(this.chartType);
 
     // Register with LinkGroup for crosshair & viewport synchronization
     if (this.manager.linkGroup && this.chart) {
@@ -769,6 +779,35 @@ export class ChartSlot {
     this.manager.saveSlotsConfig();
   }
 
+  setChartType(newType) {
+    if (!newType) return;
+    this.chartType = newType;
+    if (this.chart && this.mainSeries && typeof this.chart.setSeriesType === 'function') {
+      try {
+        this.chart.setSeriesType(this.mainSeries, newType);
+      } catch (e) {
+        console.warn(`[ChartSlot ${this.id}] Failed to setSeriesType:`, e);
+      }
+      this.applySeriesStyle(newType);
+    }
+    this.manager.saveSlotsConfig();
+  }
+
+  applySeriesStyle(type = this.chartType) {
+    if (!this.mainSeries || typeof this.mainSeries.applyOptions !== 'function') return;
+    try {
+      const raw = localStorage.getItem('trading_simulator_chart_custom_styles');
+      if (raw) {
+        const allCustom = JSON.parse(raw);
+        if (allCustom && allCustom[type]) {
+          this.mainSeries.applyOptions(allCustom[type]);
+        }
+      }
+    } catch (e) {
+      console.warn(`[ChartSlot ${this.id}] Failed to apply saved series style:`, e);
+    }
+  }
+
   updateBadge() {
     if (!this.badgeEl) return;
     const symEl = this.badgeEl.querySelector('.badge-symbol');
@@ -876,6 +915,7 @@ export class MultiChartLayoutManager {
     this.syncSymbol = localStorage.getItem('trading_simulator_sync_symbol') !== 'false';
     this.syncTime = localStorage.getItem('trading_simulator_sync_time') === 'true';
     this.syncDrawings = localStorage.getItem('trading_simulator_sync_drawings') !== 'false';
+    this.syncChartType = localStorage.getItem('trading_simulator_sync_chart_type') !== 'false';
 
     this.savedSlotsConfigKey = 'trading_simulator_multi_chart_slots';
 
@@ -999,6 +1039,19 @@ export class MultiChartLayoutManager {
           if (this.syncDrawings) {
             this.shareAllDrawings();
           }
+        }
+      });
+    }
+
+    const cbChartType = document.getElementById('syncChartTypeCheckbox');
+    if (cbChartType) {
+      cbChartType.checked = this.syncChartType;
+      cbChartType.addEventListener('change', () => {
+        this.syncChartType = cbChartType.checked;
+        localStorage.setItem('trading_simulator_sync_chart_type', String(this.syncChartType));
+        if (this.syncChartType) {
+          const activeType = this.getActiveChartType();
+          this.setAllSlotsChartType(activeType);
         }
       });
     }
@@ -1282,7 +1335,8 @@ export class MultiChartLayoutManager {
       for (const [id, slot] of this.slots.entries()) {
         configs[id] = {
           timeframe: slot.timeframe,
-          symbol: slot.symbol
+          symbol: slot.symbol,
+          chartType: slot.chartType
         };
       }
       localStorage.setItem(this.savedSlotsConfigKey, JSON.stringify(configs));
@@ -1319,6 +1373,9 @@ export class MultiChartLayoutManager {
           : '1d');
         const sym = this.syncSymbol ? currentSymbol : (savedConfig?.symbol || currentSymbol);
         const fig = this.syncSymbol ? currentFigi : (savedConfig?.figi || currentFigi);
+        const slotChartType = this.syncChartType
+          ? (this.getActiveChartType() || 'candlestick')
+          : (savedConfig?.chartType || this.getActiveChartType() || 'candlestick');
 
         const slot = new ChartSlot({
           id,
@@ -1326,7 +1383,8 @@ export class MultiChartLayoutManager {
           store: this.store,
           symbol: sym,
           figi: fig,
-          timeframe: tf
+          timeframe: tf,
+          chartType: slotChartType
         });
 
         this.slots.set(id, slot);
@@ -1382,6 +1440,88 @@ export class MultiChartLayoutManager {
         eventBus.emit('toolbar:sync_timeframe', slot.timeframe);
       }
     }
+
+    if (!this.syncChartType) {
+      const slotChartType = slotId === 0 ? (this.store.get('currentChartType') || 'candlestick') : (this.slots.get(slotId)?.chartType || 'candlestick');
+      if (slotChartType) {
+        eventBus.emit('toolbar:sync_chart_type', slotChartType);
+      }
+    }
+  }
+
+  getActiveChartType() {
+    if (this.activeSlotId === 0) {
+      return this.store.get('currentChartType') || 'candlestick';
+    }
+    const slot = this.slots.get(this.activeSlotId);
+    return slot?.chartType || this.store.get('currentChartType') || 'candlestick';
+  }
+
+  setAllSlotsChartType(type) {
+    if (!type) return;
+    this.store.set('currentChartType', type);
+    if (this.store.chart && this.store.mainSeries && typeof this.store.chart.setSeriesType === 'function') {
+      try {
+        this.store.chart.setSeriesType(this.store.mainSeries, type);
+      } catch (e) {
+        console.warn('[MultiChart] Slot 0 setSeriesType error:', e);
+      }
+      this.store.chartController?.applySavedSeriesStyle(type);
+    }
+
+    for (const slot of this.slots.values()) {
+      slot.setChartType(type);
+    }
+
+    eventBus.emit('toolbar:sync_chart_type', type);
+    this.saveSlotsConfig();
+  }
+
+  setChartType(type, targetSlotId = this.activeSlotId) {
+    if (!type) return;
+    if (this.syncChartType) {
+      this.setAllSlotsChartType(type);
+    } else {
+      if (targetSlotId === 0) {
+        this.store.set('currentChartType', type);
+        if (this.store.chart && this.store.mainSeries && typeof this.store.chart.setSeriesType === 'function') {
+          try {
+            this.store.chart.setSeriesType(this.store.mainSeries, type);
+          } catch (e) {
+            console.warn('[MultiChart] Slot 0 setSeriesType error:', e);
+          }
+          this.store.chartController?.applySavedSeriesStyle(type);
+        }
+      } else {
+        const slot = this.slots.get(targetSlotId);
+        if (slot) {
+          slot.setChartType(type);
+        }
+      }
+      eventBus.emit('toolbar:sync_chart_type', type);
+      this.saveSlotsConfig();
+    }
+  }
+
+  applyAllSlotsSeriesStyle(type, customStyle = null) {
+    if (!type) return;
+    if (this.store.get('currentChartType') === type) {
+      if (customStyle && this.store.mainSeries?.applyOptions) {
+        this.store.mainSeries.applyOptions(customStyle);
+      } else {
+        this.store.chartController?.applySavedSeriesStyle(type);
+      }
+    }
+
+    for (const slot of this.slots.values()) {
+      if (slot.chartType === type && slot.mainSeries) {
+        if (customStyle && typeof slot.mainSeries.applyOptions === 'function') {
+          slot.mainSeries.applyOptions(customStyle);
+        } else {
+          slot.applySeriesStyle(type);
+        }
+      }
+    }
   }
 
   // Export state for SessionService
@@ -1391,7 +1531,8 @@ export class MultiChartLayoutManager {
       slots.push({
         id,
         timeframe: slot.timeframe,
-        symbol: slot.symbol
+        symbol: slot.symbol,
+        chartType: slot.chartType
       });
     }
 
@@ -1401,6 +1542,7 @@ export class MultiChartLayoutManager {
       syncSymbol: this.syncSymbol,
       syncTime: this.syncTime,
       syncDrawings: this.syncDrawings,
+      syncChartType: this.syncChartType,
       slots
     };
   }
@@ -1436,6 +1578,12 @@ export class MultiChartLayoutManager {
       if (this.drawingLinkGroup) this.drawingLinkGroup.setOptions({ enabled: this.syncDrawings });
     }
 
+    if (state.syncChartType !== undefined) {
+      this.syncChartType = !!state.syncChartType;
+      const cb = document.getElementById('syncChartTypeCheckbox');
+      if (cb) cb.checked = this.syncChartType;
+    }
+
     if (state.layout && state.layout !== this.currentLayout) {
       this.setLayout(state.layout);
     }
@@ -1449,6 +1597,9 @@ export class MultiChartLayoutManager {
           }
           if (slotData.symbol && slotData.symbol !== slot.symbol) {
             slot.setSymbol(slotData.symbol);
+          }
+          if (slotData.chartType && slotData.chartType !== slot.chartType) {
+            slot.setChartType(slotData.chartType);
           }
         }
       }

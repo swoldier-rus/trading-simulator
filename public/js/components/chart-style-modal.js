@@ -380,6 +380,9 @@ export class ChartStyleModalComponent {
   saveAndClose() {
     if (this.currentType) {
       this.saveCustomStyle(this.currentType, this.currentWorkingStyle);
+      if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsSeriesStyle === 'function') {
+        this.store.multiChart.applyAllSlotsSeriesStyle(this.currentType, this.currentWorkingStyle);
+      }
     }
 
     if (this.currentWorkingShowExecutions !== undefined) {
@@ -564,6 +567,9 @@ export class ChartStyleModalComponent {
       } catch (err) {
         console.warn('[ChartStyleModal] Live preview error:', err);
       }
+    }
+    if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsSeriesStyle === 'function') {
+      this.store.multiChart.applyAllSlotsSeriesStyle(this.currentType, this.currentWorkingStyle);
     }
   }
 
