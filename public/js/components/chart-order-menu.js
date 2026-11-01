@@ -10,6 +10,7 @@ export class ChartOrderMenuComponent {
     this.chartContainer = this.chartEl ? this.chartEl.parentElement : null;
     this.gridWrapper = document.getElementById('chartGridWrapper') || this.chartContainer;
     this.priceAxisPlusBtn = document.getElementById('priceAxisPlusBtn');
+    this.priceAxisGuideline = document.getElementById('priceAxisGuideline');
     this.chartOrderMenu = document.getElementById('chartOrderMenu');
 
     // Menu internal elements
@@ -71,6 +72,15 @@ export class ChartOrderMenuComponent {
       document.body.appendChild(this.priceAxisPlusBtn);
       this.priceAxisPlusBtn.style.position = 'fixed';
       this.priceAxisPlusBtn.style.zIndex = '1000';
+    }
+    if (!this.priceAxisGuideline) {
+      this.priceAxisGuideline = document.createElement('div');
+      this.priceAxisGuideline.id = 'priceAxisGuideline';
+      this.priceAxisGuideline.className = 'price-axis-guideline';
+      this.priceAxisGuideline.style.display = 'none';
+      document.body.appendChild(this.priceAxisGuideline);
+    } else if (this.priceAxisGuideline.parentElement !== document.body) {
+      document.body.appendChild(this.priceAxisGuideline);
     }
 
     this.initMouseTracking();
@@ -217,8 +227,8 @@ export class ChartOrderMenuComponent {
       const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
 
-      // Only show + button if mouse is over or near the price scale (right edge)
-      if (chart && localY >= 0 && localY <= rect.height - 28 && localX >= rect.width - 90) {
+      // Only show + button if mouse is over or near the price scale (right edge up to ~80px left of scale)
+      if (chart && localY >= 0 && localY <= rect.height - 28 && localX >= rect.width - 145) {
         let price = typeof chart.coordinateToPrice === 'function' ? chart.coordinateToPrice(localY) : null;
         let bar = null;
         if (slotId > 0) {
@@ -239,12 +249,30 @@ export class ChartOrderMenuComponent {
           this.hoveredY = localY;
           this.targetSlotId = slotId;
           this.targetSymbol = symbol;
+
+          const priceScaleWidth = 65;
+          const btnWidth = 22;
+          const axisDividerX = rect.right - priceScaleWidth;
+          const btnLeft = axisDividerX - btnWidth - 3;
+          const btnTop = rect.top + localY - 11;
+
           if (this.priceAxisPlusBtn) {
             this.priceAxisPlusBtn.style.position = 'fixed';
-            this.priceAxisPlusBtn.style.top = `${rect.top + localY - 11}px`;
-            this.priceAxisPlusBtn.style.left = `${rect.right - 56}px`;
+            this.priceAxisPlusBtn.style.top = `${btnTop}px`;
+            this.priceAxisPlusBtn.style.left = `${btnLeft}px`;
             this.priceAxisPlusBtn.style.display = 'flex';
             this.priceAxisPlusBtn.style.zIndex = '1000';
+          }
+
+          if (this.priceAxisGuideline) {
+            const guidelineLeft = rect.left;
+            const guidelineWidth = Math.max(0, btnLeft - guidelineLeft);
+            this.priceAxisGuideline.style.position = 'fixed';
+            this.priceAxisGuideline.style.top = `${rect.top + localY}px`;
+            this.priceAxisGuideline.style.left = `${guidelineLeft}px`;
+            this.priceAxisGuideline.style.width = `${guidelineWidth}px`;
+            this.priceAxisGuideline.style.display = 'block';
+            this.priceAxisGuideline.style.zIndex = '999';
           }
           return;
         }
@@ -252,6 +280,7 @@ export class ChartOrderMenuComponent {
 
       if (!this.isMenuOpen && this.priceAxisPlusBtn && e.target !== this.priceAxisPlusBtn && !this.priceAxisPlusBtn.contains(e.target)) {
         this.priceAxisPlusBtn.style.display = 'none';
+        if (this.priceAxisGuideline) this.priceAxisGuideline.style.display = 'none';
       }
     });
 
@@ -259,8 +288,9 @@ export class ChartOrderMenuComponent {
       if (e.relatedTarget === this.priceAxisPlusBtn || (this.priceAxisPlusBtn && this.priceAxisPlusBtn.contains(e.relatedTarget))) {
         return;
       }
-      if (!this.isMenuOpen && this.priceAxisPlusBtn) {
-        this.priceAxisPlusBtn.style.display = 'none';
+      if (!this.isMenuOpen) {
+        if (this.priceAxisPlusBtn) this.priceAxisPlusBtn.style.display = 'none';
+        if (this.priceAxisGuideline) this.priceAxisGuideline.style.display = 'none';
       }
     });
 
@@ -280,6 +310,7 @@ export class ChartOrderMenuComponent {
         const trackEl = this.gridWrapper || this.chartContainer;
         if (!this.isMenuOpen && e.relatedTarget && trackEl && !trackEl.contains(e.relatedTarget)) {
           this.priceAxisPlusBtn.style.display = 'none';
+          if (this.priceAxisGuideline) this.priceAxisGuideline.style.display = 'none';
         }
       });
     }
@@ -592,6 +623,10 @@ export class ChartOrderMenuComponent {
 
     this.updateDisplay();
 
+    if (this.priceAxisGuideline) {
+      this.priceAxisGuideline.style.display = 'none';
+    }
+
     if (!this.chartOrderMenu) return;
 
     // Make visible briefly hidden to measure actual DOM dimensions
@@ -643,6 +678,12 @@ export class ChartOrderMenuComponent {
     if (this.chartOrderMenu) {
       this.chartOrderMenu.style.display = 'none';
       this.chartOrderMenu.style.visibility = 'visible';
+    }
+    if (this.priceAxisPlusBtn) {
+      this.priceAxisPlusBtn.style.display = 'none';
+    }
+    if (this.priceAxisGuideline) {
+      this.priceAxisGuideline.style.display = 'none';
     }
   }
 

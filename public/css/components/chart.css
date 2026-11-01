@@ -342,7 +342,7 @@
 /* -------------------------------------------------------------------------- */
 .price-axis-plus-btn {
   position: absolute;
-  right: 56px;
+  right: 68px;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -367,6 +367,15 @@
 .price-axis-plus-btn svg {
   pointer-events: none;
 }
+/* TradingView-style Price Axis Guideline Line */
+.price-axis-guideline {
+  position: fixed;
+  height: 1px;
+  border-top: 1px dashed rgba(41, 98, 255, 0.75);
+  pointer-events: none;
+  z-index: 999;
+}
+
 
 /* On-Chart Order Context Menu Popover (TradingView exact style) */
 .chart-order-menu {
