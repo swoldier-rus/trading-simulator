@@ -1003,6 +1003,8 @@ export class MultiChartLayoutManager {
     this.syncChartType = localStorage.getItem('trading_simulator_sync_chart_type') !== 'false';
 
     this.savedSlotsConfigKey = 'trading_simulator_multi_chart_slots';
+    this.proportions = this.loadProportions();
+    this.splitterContainer = null;
 
     this.linkGroup = null;
     this.drawingLinkGroup = null;
@@ -1043,6 +1045,7 @@ export class MultiChartLayoutManager {
 
     this.initDropdown();
     this.bindEvents();
+    this.initSplitters();
 
     // Check saved layout preset in localStorage
     const savedLayout = localStorage.getItem('trading_simulator_layout_preset');
@@ -1346,6 +1349,7 @@ export class MultiChartLayoutManager {
 
     // Update wrapper class
     this.wrapperEl.className = `chart-grid-wrapper layout-${layoutPreset}`;
+    this.updateSplitters(layoutPreset);
 
     // Update active tile in dropdown
     if (this.dropdownEl) {
@@ -1639,6 +1643,432 @@ export class MultiChartLayoutManager {
     }
   }
 
+  initSplitters() {
+    let container = document.getElementById('gridSplitterContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'gridSplitterContainer';
+      container.className = 'grid-splitter-container';
+      if (this.wrapperEl && this.wrapperEl.parentNode) {
+        this.wrapperEl.parentNode.insertBefore(container, this.wrapperEl.nextSibling);
+      }
+    }
+    this.splitterContainer = container;
+  }
+
+  loadProportions() {
+    const defaults = {
+      '1x2': { colRatio: 0.5 },
+      '2x1': { rowRatio: 0.5 },
+      '2x2': { colRatio: 0.5, rowRatio: 0.5 }
+    };
+    try {
+      const saved = localStorage.getItem('trading_simulator_grid_proportions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          '1x2': { ...defaults['1x2'], ...(parsed['1x2'] || {}) },
+          '2x1': { ...defaults['2x1'], ...(parsed['2x1'] || {}) },
+          '2x2': { ...defaults['2x2'], ...(parsed['2x2'] || {}) }
+        };
+      }
+    } catch (e) {
+      console.warn('[MultiChart] Failed to load grid proportions:', e);
+    }
+    return defaults;
+  }
+
+  saveProportions() {
+    try {
+      localStorage.setItem('trading_simulator_grid_proportions', JSON.stringify(this.proportions));
+    } catch (e) {
+      console.warn('[MultiChart] Failed to save grid proportions:', e);
+    }
+  }
+
+  applyCurrentProportions() {
+    this.updateSplitters(this.currentLayout);
+  }
+
+  forceResizeAllCharts() {
+    const chartEl = document.getElementById('chart');
+    if (chartEl && this.store.chart) {
+      this.store.chart.applySize(chartEl.clientWidth, chartEl.clientHeight);
+    }
+    for (const slot of this.slots.values()) {
+      if (slot.chart && slot.bodyEl) {
+        slot.chart.applySize(slot.bodyEl.clientWidth, slot.bodyEl.clientHeight);
+      }
+    }
+  }
+
+  updateSplitters(layout = this.currentLayout) {
+    if (!this.splitterContainer) {
+      this.initSplitters();
+    }
+    if (!this.splitterContainer || !this.wrapperEl) return;
+
+    this.splitterContainer.innerHTML = '';
+
+    if (layout === '1x1') {
+      this.wrapperEl.style.gridTemplateColumns = '';
+      this.wrapperEl.style.gridTemplateRows = '';
+      return;
+    }
+
+    if (layout === '1x2') {
+      const prop = this.proportions['1x2'] || { colRatio: 0.5 };
+      const colRatio = Math.max(0.15, Math.min(0.85, prop.colRatio ?? 0.5));
+      this.proportions['1x2'].colRatio = colRatio;
+
+      this.wrapperEl.style.gridTemplateColumns = `${colRatio}fr ${1 - colRatio}fr`;
+      this.wrapperEl.style.gridTemplateRows = '1fr';
+
+      const splitter = document.createElement('div');
+      splitter.className = 'grid-splitter splitter-vertical';
+      splitter.title = 'Перетащите для изменения пропорции (двойной клик — 50/50)';
+      splitter.style.left = `${colRatio * 100}%`;
+      splitter.innerHTML = '<div class="splitter-line"></div>';
+
+      let isDragging = false;
+      splitter.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDragging = true;
+        splitter.setPointerCapture(e.pointerId);
+        splitter.classList.add('active');
+        document.body.classList.add('is-resizing-grid');
+        document.body.style.cursor = 'col-resize';
+      });
+
+      splitter.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const rect = this.wrapperEl.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        let ratio = (e.clientX - rect.left) / rect.width;
+        const minRatio = Math.max(0.15, 120 / rect.width);
+        const maxRatio = Math.min(0.85, 1 - (120 / rect.width));
+        ratio = Math.max(minRatio, Math.min(maxRatio, ratio));
+
+        this.proportions['1x2'].colRatio = ratio;
+        this.wrapperEl.style.gridTemplateColumns = `${ratio}fr ${1 - ratio}fr`;
+        splitter.style.left = `${ratio * 100}%`;
+      });
+
+      const onStopDrag = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        try { splitter.releasePointerCapture(e.pointerId); } catch (err) {}
+        splitter.classList.remove('active');
+        document.body.classList.remove('is-resizing-grid');
+        document.body.style.cursor = '';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      };
+
+      splitter.addEventListener('pointerup', onStopDrag);
+      splitter.addEventListener('pointercancel', onStopDrag);
+
+      splitter.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.proportions['1x2'].colRatio = 0.5;
+        this.wrapperEl.style.gridTemplateColumns = '1fr 1fr';
+        splitter.style.left = '50%';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      });
+
+      this.splitterContainer.appendChild(splitter);
+    } else if (layout === '2x1') {
+      const prop = this.proportions['2x1'] || { rowRatio: 0.5 };
+      const rowRatio = Math.max(0.15, Math.min(0.85, prop.rowRatio ?? 0.5));
+      this.proportions['2x1'].rowRatio = rowRatio;
+
+      this.wrapperEl.style.gridTemplateColumns = '1fr';
+      this.wrapperEl.style.gridTemplateRows = `${rowRatio}fr ${1 - rowRatio}fr`;
+
+      const splitter = document.createElement('div');
+      splitter.className = 'grid-splitter splitter-horizontal';
+      splitter.title = 'Перетащите для изменения пропорции (двойной клик — 50/50)';
+      splitter.style.top = `${rowRatio * 100}%`;
+      splitter.innerHTML = '<div class="splitter-line"></div>';
+
+      let isDragging = false;
+      splitter.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDragging = true;
+        splitter.setPointerCapture(e.pointerId);
+        splitter.classList.add('active');
+        document.body.classList.add('is-resizing-grid');
+        document.body.style.cursor = 'row-resize';
+      });
+
+      splitter.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const rect = this.wrapperEl.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        let ratio = (e.clientY - rect.top) / rect.height;
+        const minRatio = Math.max(0.15, 100 / rect.height);
+        const maxRatio = Math.min(0.85, 1 - (100 / rect.height));
+        ratio = Math.max(minRatio, Math.min(maxRatio, ratio));
+
+        this.proportions['2x1'].rowRatio = ratio;
+        this.wrapperEl.style.gridTemplateRows = `${ratio}fr ${1 - ratio}fr`;
+        splitter.style.top = `${ratio * 100}%`;
+      });
+
+      const onStopDrag = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        try { splitter.releasePointerCapture(e.pointerId); } catch (err) {}
+        splitter.classList.remove('active');
+        document.body.classList.remove('is-resizing-grid');
+        document.body.style.cursor = '';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      };
+
+      splitter.addEventListener('pointerup', onStopDrag);
+      splitter.addEventListener('pointercancel', onStopDrag);
+
+      splitter.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.proportions['2x1'].rowRatio = 0.5;
+        this.wrapperEl.style.gridTemplateRows = '1fr 1fr';
+        splitter.style.top = '50%';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      });
+
+      this.splitterContainer.appendChild(splitter);
+    } else if (layout === '2x2') {
+      const prop = this.proportions['2x2'] || { colRatio: 0.5, rowRatio: 0.5 };
+      let colRatio = Math.max(0.15, Math.min(0.85, prop.colRatio ?? 0.5));
+      let rowRatio = Math.max(0.15, Math.min(0.85, prop.rowRatio ?? 0.5));
+      this.proportions['2x2'].colRatio = colRatio;
+      this.proportions['2x2'].rowRatio = rowRatio;
+
+      this.wrapperEl.style.gridTemplateColumns = `${colRatio}fr ${1 - colRatio}fr`;
+      this.wrapperEl.style.gridTemplateRows = `${rowRatio}fr ${1 - rowRatio}fr`;
+
+      // 1. Vertical splitter
+      const splitterVert = document.createElement('div');
+      splitterVert.className = 'grid-splitter splitter-vertical';
+      splitterVert.title = 'Перетащите по горизонтали (двойной клик — 50/50)';
+      splitterVert.style.left = `${colRatio * 100}%`;
+      splitterVert.innerHTML = '<div class="splitter-line"></div>';
+
+      // 2. Horizontal splitter
+      const splitterHorz = document.createElement('div');
+      splitterHorz.className = 'grid-splitter splitter-horizontal';
+      splitterHorz.title = 'Перетащите по вертикали (двойной клик — 50/50)';
+      splitterHorz.style.top = `${rowRatio * 100}%`;
+      splitterHorz.innerHTML = '<div class="splitter-line"></div>';
+
+      // 3. Central intersection handle
+      const centerHandle = document.createElement('div');
+      centerHandle.className = 'grid-splitter-center';
+      centerHandle.title = 'Перетащите для изменения размеров по двум осям (двойной клик — 50/50)';
+      centerHandle.style.left = `${colRatio * 100}%`;
+      centerHandle.style.top = `${rowRatio * 100}%`;
+      centerHandle.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="5 9 2 12 5 15"></polyline>
+          <polyline points="9 5 12 2 15 5"></polyline>
+          <polyline points="15 19 12 22 9 19"></polyline>
+          <polyline points="19 9 22 12 19 15"></polyline>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="12" y1="2" x2="12" y2="22"></line>
+        </svg>
+      `;
+
+      // Vertical splitter dragging
+      let isDraggingVert = false;
+      splitterVert.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingVert = true;
+        splitterVert.setPointerCapture(e.pointerId);
+        splitterVert.classList.add('active');
+        document.body.classList.add('is-resizing-grid');
+        document.body.style.cursor = 'col-resize';
+      });
+
+      splitterVert.addEventListener('pointermove', (e) => {
+        if (!isDraggingVert) return;
+        const rect = this.wrapperEl.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        let cRatio = (e.clientX - rect.left) / rect.width;
+        const minRatio = Math.max(0.15, 120 / rect.width);
+        const maxRatio = Math.min(0.85, 1 - (120 / rect.width));
+        cRatio = Math.max(minRatio, Math.min(maxRatio, cRatio));
+
+        this.proportions['2x2'].colRatio = cRatio;
+        this.wrapperEl.style.gridTemplateColumns = `${cRatio}fr ${1 - cRatio}fr`;
+        splitterVert.style.left = `${cRatio * 100}%`;
+        centerHandle.style.left = `${cRatio * 100}%`;
+      });
+
+      const onStopDragVert = (e) => {
+        if (!isDraggingVert) return;
+        isDraggingVert = false;
+        try { splitterVert.releasePointerCapture(e.pointerId); } catch (err) {}
+        splitterVert.classList.remove('active');
+        document.body.classList.remove('is-resizing-grid');
+        document.body.style.cursor = '';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      };
+      splitterVert.addEventListener('pointerup', onStopDragVert);
+      splitterVert.addEventListener('pointercancel', onStopDragVert);
+
+      splitterVert.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.proportions['2x2'].colRatio = 0.5;
+        this.wrapperEl.style.gridTemplateColumns = '1fr 1fr';
+        splitterVert.style.left = '50%';
+        centerHandle.style.left = '50%';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      });
+
+      // Horizontal splitter dragging
+      let isDraggingHorz = false;
+      splitterHorz.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingHorz = true;
+        splitterHorz.setPointerCapture(e.pointerId);
+        splitterHorz.classList.add('active');
+        document.body.classList.add('is-resizing-grid');
+        document.body.style.cursor = 'row-resize';
+      });
+
+      splitterHorz.addEventListener('pointermove', (e) => {
+        if (!isDraggingHorz) return;
+        const rect = this.wrapperEl.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        let rRatio = (e.clientY - rect.top) / rect.height;
+        const minRatio = Math.max(0.15, 100 / rect.height);
+        const maxRatio = Math.min(0.85, 1 - (100 / rect.height));
+        rRatio = Math.max(minRatio, Math.min(maxRatio, rRatio));
+
+        this.proportions['2x2'].rowRatio = rRatio;
+        this.wrapperEl.style.gridTemplateRows = `${rRatio}fr ${1 - rRatio}fr`;
+        splitterHorz.style.top = `${rRatio * 100}%`;
+        centerHandle.style.top = `${rRatio * 100}%`;
+      });
+
+      const onStopDragHorz = (e) => {
+        if (!isDraggingHorz) return;
+        isDraggingHorz = false;
+        try { splitterHorz.releasePointerCapture(e.pointerId); } catch (err) {}
+        splitterHorz.classList.remove('active');
+        document.body.classList.remove('is-resizing-grid');
+        document.body.style.cursor = '';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      };
+      splitterHorz.addEventListener('pointerup', onStopDragHorz);
+      splitterHorz.addEventListener('pointercancel', onStopDragHorz);
+
+      splitterHorz.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.proportions['2x2'].rowRatio = 0.5;
+        this.wrapperEl.style.gridTemplateRows = '1fr 1fr';
+        splitterHorz.style.top = '50%';
+        centerHandle.style.top = '50%';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      });
+
+      // Center handle dragging (2-axis simultaneous)
+      let isDraggingCenter = false;
+      centerHandle.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingCenter = true;
+        centerHandle.setPointerCapture(e.pointerId);
+        centerHandle.classList.add('active');
+        splitterVert.classList.add('active');
+        splitterHorz.classList.add('active');
+        document.body.classList.add('is-resizing-grid');
+        document.body.style.cursor = 'move';
+      });
+
+      centerHandle.addEventListener('pointermove', (e) => {
+        if (!isDraggingCenter) return;
+        const rect = this.wrapperEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        let cRatio = (e.clientX - rect.left) / rect.width;
+        const minCRatio = Math.max(0.15, 120 / rect.width);
+        const maxCRatio = Math.min(0.85, 1 - (120 / rect.width));
+        cRatio = Math.max(minCRatio, Math.min(maxCRatio, cRatio));
+
+        let rRatio = (e.clientY - rect.top) / rect.height;
+        const minRRatio = Math.max(0.15, 100 / rect.height);
+        const maxRRatio = Math.min(0.85, 1 - (100 / rect.height));
+        rRatio = Math.max(minRRatio, Math.min(maxRRatio, rRatio));
+
+        this.proportions['2x2'].colRatio = cRatio;
+        this.proportions['2x2'].rowRatio = rRatio;
+
+        this.wrapperEl.style.gridTemplateColumns = `${cRatio}fr ${1 - cRatio}fr`;
+        this.wrapperEl.style.gridTemplateRows = `${rRatio}fr ${1 - rRatio}fr`;
+
+        splitterVert.style.left = `${cRatio * 100}%`;
+        splitterHorz.style.top = `${rRatio * 100}%`;
+        centerHandle.style.left = `${cRatio * 100}%`;
+        centerHandle.style.top = `${rRatio * 100}%`;
+      });
+
+      const onStopDragCenter = (e) => {
+        if (!isDraggingCenter) return;
+        isDraggingCenter = false;
+        try { centerHandle.releasePointerCapture(e.pointerId); } catch (err) {}
+        centerHandle.classList.remove('active');
+        splitterVert.classList.remove('active');
+        splitterHorz.classList.remove('active');
+        document.body.classList.remove('is-resizing-grid');
+        document.body.style.cursor = '';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      };
+      centerHandle.addEventListener('pointerup', onStopDragCenter);
+      centerHandle.addEventListener('pointercancel', onStopDragCenter);
+
+      centerHandle.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.proportions['2x2'].colRatio = 0.5;
+        this.proportions['2x2'].rowRatio = 0.5;
+        this.wrapperEl.style.gridTemplateColumns = '1fr 1fr';
+        this.wrapperEl.style.gridTemplateRows = '1fr 1fr';
+        splitterVert.style.left = '50%';
+        splitterHorz.style.top = '50%';
+        centerHandle.style.left = '50%';
+        centerHandle.style.top = '50%';
+        this.saveProportions();
+        this.forceResizeAllCharts();
+      });
+
+      this.splitterContainer.appendChild(splitterVert);
+      this.splitterContainer.appendChild(splitterHorz);
+      this.splitterContainer.appendChild(centerHandle);
+    }
+  }
+
   renderAllSessionBreaks() {
     if (this.store.sessionBreaksOverlay && typeof this.store.sessionBreaksOverlay.render === 'function') {
       this.store.sessionBreaksOverlay.render();
@@ -1669,6 +2099,7 @@ export class MultiChartLayoutManager {
       syncTime: this.syncTime,
       syncDrawings: this.syncDrawings,
       syncChartType: this.syncChartType,
+      proportions: JSON.parse(JSON.stringify(this.proportions)),
       slots
     };
   }
@@ -1710,8 +2141,15 @@ export class MultiChartLayoutManager {
       if (cb) cb.checked = this.syncChartType;
     }
 
+    if (state.proportions) {
+      this.proportions = { ...this.proportions, ...state.proportions };
+      this.saveProportions();
+    }
+
     if (state.layout && state.layout !== this.currentLayout) {
       this.setLayout(state.layout);
+    } else if (state.layout) {
+      this.updateSplitters(state.layout);
     }
 
     if (Array.isArray(state.slots)) {
