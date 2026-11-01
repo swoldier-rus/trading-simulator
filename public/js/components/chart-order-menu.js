@@ -253,7 +253,7 @@ export class ChartOrderMenuComponent {
           const priceScaleWidth = 65;
           const btnWidth = 20;
           const axisDividerX = rect.right - priceScaleWidth;
-          const btnLeft = axisDividerX - btnWidth - 3;
+          const btnLeft = axisDividerX - btnWidth - 3 + 10;
           const btnTop = rect.top + localY - 10;
 
           if (this.priceAxisPlusBtn) {

@@ -342,7 +342,7 @@
 /* -------------------------------------------------------------------------- */
 .price-axis-plus-btn {
   position: absolute;
-  right: 68px;
+  right: 58px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -355,13 +355,12 @@
   justify-content: center;
   cursor: pointer;
   z-index: 35;
-  transition: transform 0.12s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease;
   padding: 0;
 }
 
 .price-axis-plus-btn:hover {
   background-color: #2a2e39;
-  transform: scale(1.15);
 }
 
 .price-axis-plus-btn svg {
