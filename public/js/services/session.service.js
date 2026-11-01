@@ -234,6 +234,9 @@ class SessionPersistenceService {
         if (this.store.chartController) {
           this.store.chartController.applyAppearance(saved.ui.chartAppearanceConfig);
         }
+        if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsAppearance === 'function') {
+          this.store.multiChart.applyAllSlotsAppearance(saved.ui.chartAppearanceConfig);
+        }
       }
 
       // 2. Paper trading account

@@ -372,6 +372,9 @@ export class ChartStyleModalComponent {
       if (this.store.sessionBreaksOverlay) {
         this.store.sessionBreaksOverlay.render();
       }
+      if (this.store.multiChart && typeof this.store.multiChart.renderAllSessionBreaks === 'function') {
+        this.store.multiChart.renderAllSessionBreaks();
+      }
     }
 
     this.close();
@@ -408,6 +411,9 @@ export class ChartStyleModalComponent {
       if (this.store.chartController) {
         this.store.chartController.applyAppearance(this.currentWorkingAppearance);
       }
+      if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsAppearance === 'function') {
+        this.store.multiChart.applyAllSlotsAppearance(this.currentWorkingAppearance);
+      }
     }
 
     if (this.currentWorkingSessionBreaks) {
@@ -415,6 +421,9 @@ export class ChartStyleModalComponent {
       this.store.set('showSessionBreaks', this.currentWorkingSessionBreaks.enabled);
       if (this.store.sessionBreaksOverlay) {
         this.store.sessionBreaksOverlay.render();
+      }
+      if (this.store.multiChart && typeof this.store.multiChart.renderAllSessionBreaks === 'function') {
+        this.store.multiChart.renderAllSessionBreaks();
       }
     }
 
@@ -463,17 +472,26 @@ export class ChartStyleModalComponent {
     if (this.store.chartController && this.currentWorkingAppearance) {
       this.store.chartController.applyAppearance(this.currentWorkingAppearance);
     }
+    if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsAppearance === 'function') {
+      this.store.multiChart.applyAllSlotsAppearance(this.currentWorkingAppearance);
+    }
   }
 
   applyBackgroundLivePreview() {
     if (this.store.chartController && this.currentWorkingAppearance?.background) {
       this.store.chartController.applyBackground(this.currentWorkingAppearance.background);
     }
+    if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsBackground === 'function') {
+      this.store.multiChart.applyAllSlotsBackground(this.currentWorkingAppearance.background);
+    }
   }
 
   applyGridLivePreview() {
     if (this.store.chartController && this.currentWorkingAppearance?.grid) {
       this.store.chartController.applyGrid(this.currentWorkingAppearance.grid);
+    }
+    if (this.store.multiChart && typeof this.store.multiChart.applyAllSlotsGrid === 'function') {
+      this.store.multiChart.applyAllSlotsGrid(this.currentWorkingAppearance.grid);
     }
   }
 
@@ -581,6 +599,9 @@ export class ChartStyleModalComponent {
     }
     if (this.store.sessionBreaksOverlay) {
       this.store.sessionBreaksOverlay.render();
+    }
+    if (this.store.multiChart && typeof this.store.multiChart.renderAllSessionBreaks === 'function') {
+      this.store.multiChart.renderAllSessionBreaks();
     }
   }
 

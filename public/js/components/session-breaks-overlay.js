@@ -8,65 +8,122 @@ function getSessionDayKey(timeSec) {
 }
 
 export class SessionBreaksOverlayComponent {
-  constructor(store) {
+  constructor(store, options = {}) {
     this.store = store;
-    this.chartContainer = null;
-    this.overlayEl = null;
-    this.svgEl = null;
+    this.slotId = options.slotId ?? 0;
+    this.slotEl = options.slotEl || null;
+    this.chartContainer = options.chartContainer || null;
+    this.overlayEl = options.overlayEl || null;
+    this.svgEl = options.svgEl || null;
+    this.getChart = options.getChart || (() => this.store.chart);
+    this.getTimeframe = options.getTimeframe || (() => this.store.get('currentTimeframe') || '1h');
+    this.getCandles = options.getCandles || (() => {
+      const sim = this.store.simulator;
+      return sim && Array.isArray(sim.allCandles) ? sim.getVisibleCandles() : [];
+    });
     this._renderPending = false;
     this._hasSubscribedRangeChange = false;
+    this._unsubs = [];
 
     this.init();
   }
 
   init() {
-    const chartContainer = document.querySelector('.chart-container');
-    if (!chartContainer) return;
+    if (!this.chartContainer) {
+      this.chartContainer = this.slotEl || document.querySelector('.chart-container');
+    }
+    if (!this.chartContainer) return;
 
     // Check or create overlay DOM element
-    let overlay = document.getElementById('chartSessionBreaksOverlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'chartSessionBreaksOverlay';
-      overlay.className = 'chart-session-breaks-overlay';
-      overlay.innerHTML = `<svg class="chart-session-breaks-svg" id="chartSessionBreaksSvg"></svg>`;
-      // Insert before chartExecutionsOverlay so it sits behind execution markers and lines
-      const executionsOverlay = document.getElementById('chartExecutionsOverlay');
-      if (executionsOverlay && executionsOverlay.parentNode) {
-        executionsOverlay.parentNode.insertBefore(overlay, executionsOverlay);
-      } else {
-        chartContainer.appendChild(overlay);
+    if (!this.overlayEl) {
+      let overlay = document.getElementById('chartSessionBreaksOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'chartSessionBreaksOverlay';
+        overlay.className = 'chart-session-breaks-overlay';
+        overlay.innerHTML = `<svg class="chart-session-breaks-svg" id="chartSessionBreaksSvg"></svg>`;
+        // Insert before chartExecutionsOverlay so it sits behind execution markers and lines
+        const executionsOverlay = document.getElementById('chartExecutionsOverlay');
+        if (executionsOverlay && executionsOverlay.parentNode) {
+          executionsOverlay.parentNode.insertBefore(overlay, executionsOverlay);
+        } else {
+          this.chartContainer.appendChild(overlay);
+        }
       }
+      this.overlayEl = overlay;
     }
 
-    this.chartContainer = chartContainer;
-    this.overlayEl = overlay;
-    this.svgEl = overlay.querySelector('#chartSessionBreaksSvg');
+    if (!this.svgEl) {
+      this.svgEl = this.overlayEl.querySelector('.chart-session-breaks-svg') || this.overlayEl.querySelector('#chartSessionBreaksSvg');
+    }
 
     // Subscribe to events
-    eventBus.on('state:showSessionBreaks', () => this.render());
-    eventBus.on('state:sessionBreaksConfig', () => this.render());
-    eventBus.on('timeframe:change', () => this.render());
-    eventBus.on('symbol:change', () => this.scheduleRender());
-    eventBus.on('bar:tick', () => this.scheduleRender());
-    eventBus.on('replay:state-change', () => this.scheduleRender());
-    eventBus.on('replay:ui-update', () => this.scheduleRender());
-    eventBus.on('chart:reset_state_preserving_zoom', () => this.render());
-    window.addEventListener('resize', () => this.scheduleRender());
+    this._unsubs.push(
+      eventBus.on('state:showSessionBreaks', () => this.render()),
+      eventBus.on('state:sessionBreaksConfig', () => this.render())
+    );
+
+    if (this.slotId === 0) {
+      this._unsubs.push(
+        eventBus.on('timeframe:change', () => this.render()),
+        eventBus.on('symbol:change', () => this.scheduleRender()),
+        eventBus.on('bar:tick', () => this.scheduleRender()),
+        eventBus.on('replay:state-change', () => this.scheduleRender()),
+        eventBus.on('replay:ui-update', () => this.scheduleRender()),
+        eventBus.on('chart:reset_state_preserving_zoom', () => this.render())
+      );
+    }
+
+    this._resizeHandler = () => this.scheduleRender();
+    window.addEventListener('resize', this._resizeHandler);
 
     // User interaction events for 60 FPS responsive update
-    this.chartContainer.addEventListener('wheel', () => this.scheduleRender(), { passive: true });
-    this.chartContainer.addEventListener('mousemove', (e) => {
+    this._wheelHandler = () => this.scheduleRender();
+    this._mouseMoveHandler = (e) => {
       if (e.buttons === 1) this.scheduleRender();
-    });
-    this.chartContainer.addEventListener('touchmove', () => this.scheduleRender(), { passive: true });
+    };
+    this._touchMoveHandler = () => this.scheduleRender();
+
+    this.chartContainer.addEventListener('wheel', this._wheelHandler, { passive: true });
+    this.chartContainer.addEventListener('mousemove', this._mouseMoveHandler);
+    this.chartContainer.addEventListener('touchmove', this._touchMoveHandler, { passive: true });
 
     this.bindChartEvents();
     this.scheduleRender();
   }
 
+  destroy() {
+    if (this._unsubs) {
+      this._unsubs.forEach(unsub => {
+        if (typeof unsub === 'function') {
+          try { unsub(); } catch (e) {}
+        }
+      });
+      this._unsubs = [];
+    }
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+      this._resizeHandler = null;
+    }
+    if (this._wheelHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('wheel', this._wheelHandler);
+      this._wheelHandler = null;
+    }
+    if (this._mouseMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('mousemove', this._mouseMoveHandler);
+      this._mouseMoveHandler = null;
+    }
+    if (this._touchMoveHandler && this.chartContainer) {
+      this.chartContainer.removeEventListener('touchmove', this._touchMoveHandler);
+      this._touchMoveHandler = null;
+    }
+    if (this.svgEl) {
+      this.svgEl.innerHTML = '';
+    }
+  }
+
   bindChartEvents() {
-    const chart = this.store.chart;
+    const chart = this.getChart ? this.getChart() : this.store.chart;
     if (!chart) return;
 
     // 1. Hook into OpenAlgoCharts 60 FPS animation/paint loop for lockstep sync with panning
@@ -128,7 +185,7 @@ export class SessionBreaksOverlayComponent {
   render() {
     if (!this.overlayEl || !this.svgEl) return;
 
-    const chart = this.store.chart;
+    const chart = this.getChart ? this.getChart() : this.store.chart;
     if (!chart) return;
 
     if (!this._hasSubscribedRangeChange) {
@@ -144,7 +201,7 @@ export class SessionBreaksOverlayComponent {
     };
 
     const isEnabled = config.enabled !== false && this.store.get('showSessionBreaks') !== false;
-    const currentTf = (this.store.get('currentTimeframe') || '1h').toLowerCase();
+    const currentTf = (this.getTimeframe ? this.getTimeframe() : (this.store.get('currentTimeframe') || '1h')).toLowerCase();
 
     // Hide session breaks on daily (1D), weekly (1W) or when toggled off
     if (!isEnabled || currentTf === '1d' || currentTf === '1w') {
@@ -152,13 +209,7 @@ export class SessionBreaksOverlayComponent {
       return;
     }
 
-    const sim = this.store.simulator;
-    if (!sim || !sim.allCandles || sim.allCandles.length < 2) {
-      this.svgEl.innerHTML = '';
-      return;
-    }
-
-    const candles = sim.getVisibleCandles();
+    const candles = this.getCandles ? this.getCandles() : (this.store.simulator?.getVisibleCandles() || []);
     if (!candles || candles.length < 2) {
       this.svgEl.innerHTML = '';
       return;

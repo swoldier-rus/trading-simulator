@@ -4,6 +4,7 @@ import { marketDataService } from '../services/market-data.service.js';
 import { binarySearchCandleFloorIndex, timeframeToSeconds, showToast } from '../core/utils.js';
 import { TradeLinesOverlayComponent } from './trade-lines-overlay.js';
 import { TradeExecutionsOverlayComponent } from './trade-executions-overlay.js';
+import { SessionBreaksOverlayComponent } from './session-breaks-overlay.js';
 
 export class ChartSlot {
   constructor(options) {
@@ -20,6 +21,7 @@ export class ChartSlot {
     this.drawingController = null;
     this.tradeLinesOverlay = null;
     this.tradeExecutionsOverlay = null;
+    this.sessionBreaksOverlay = null;
     this.slotEl = null;
     this.bodyEl = null;
     this.badgeEl = null;
@@ -66,6 +68,9 @@ export class ChartSlot {
         </button>
       </div>
       <div class="chart-slot-body" id="chartSlotBody${this.id}"></div>
+      <div class="chart-session-breaks-overlay" id="chartSessionBreaksOverlay${this.id}">
+        <svg class="chart-session-breaks-svg" id="chartSessionBreaksSvg${this.id}"></svg>
+      </div>
       <div class="chart-trade-overlay" id="chartTradeOverlay${this.id}"></div>
       <div class="chart-executions-overlay" id="chartExecutionsOverlay${this.id}">
         <svg class="chart-executions-svg" id="chartExecutionsSvg${this.id}"></svg>
@@ -179,6 +184,11 @@ export class ChartSlot {
     }
     this.applySeriesStyle(this.chartType);
 
+    // Apply appearance configuration (canvas background, grid lines)
+    if (appearanceConfig) {
+      this.applyAppearance(appearanceConfig);
+    }
+
     // Register with LinkGroup for crosshair & viewport synchronization
     if (this.manager.linkGroup && this.chart) {
       this.manager.linkGroup.add(this.chart);
@@ -252,6 +262,21 @@ export class ChartSlot {
         getChart: () => this.chart,
         getSymbol: () => this.symbol,
         getCandles: () => this.allCandles
+      });
+    }
+
+    // Initialize Session Breaks Overlay for this slot
+    const overlaySessionBreaksEl = this.slotEl.querySelector(`#chartSessionBreaksOverlay${this.id}`);
+    if (overlaySessionBreaksEl) {
+      this.sessionBreaksOverlay = new SessionBreaksOverlayComponent(this.store, {
+        slotId: this.id,
+        slotEl: this.slotEl,
+        chartContainer: this.bodyEl,
+        overlayEl: overlaySessionBreaksEl,
+        svgEl: overlaySessionBreaksEl.querySelector('.chart-session-breaks-svg'),
+        getChart: () => this.chart,
+        getTimeframe: () => this.timeframe,
+        getCandles: () => (this.currentVisibleCandles && this.currentVisibleCandles.length > 0 ? this.currentVisibleCandles : this.allCandles)
       });
     }
 
@@ -764,6 +789,7 @@ export class ChartSlot {
     }
     this.tradeLinesOverlay?.scheduleRender();
     this.tradeExecutionsOverlay?.scheduleRender();
+    this.sessionBreaksOverlay?.render();
     this.manager.saveSlotsConfig();
   }
 
@@ -791,6 +817,65 @@ export class ChartSlot {
       this.applySeriesStyle(newType);
     }
     this.manager.saveSlotsConfig();
+  }
+
+  applyAppearance(config) {
+    if (!config) return;
+    if (config.background) {
+      this.applyBackground(config.background);
+    }
+    if (config.grid) {
+      this.applyGrid(config.grid);
+    }
+  }
+
+  applyBackground(bgConfig) {
+    if (!this.chart || !this.bodyEl) return;
+    const cfg = bgConfig || {};
+    const type = cfg.type || 'solid';
+    const curTheme = this.chart._theme || (window.OpenAlgoCharts ? window.OpenAlgoCharts.darkTheme : {}) || {};
+
+    if (type === 'gradient') {
+      const g1 = cfg.gradientColor1 || '#1e222d';
+      const g2 = cfg.gradientColor2 || '#131722';
+      const gradCss = `linear-gradient(to bottom, ${g1}, ${g2})`;
+      this.bodyEl.style.background = gradCss;
+      if (this.slotEl) this.slotEl.style.background = gradCss;
+      if (typeof this.chart.setTheme === 'function') {
+        this.chart.setTheme({ ...curTheme, background: 'transparent' });
+      }
+      this.bodyEl.style.background = gradCss;
+    } else {
+      const color = cfg.color || '#131722';
+      this.bodyEl.style.background = color;
+      if (this.slotEl) this.slotEl.style.background = color;
+      if (typeof this.chart.setTheme === 'function') {
+        this.chart.setTheme({ ...curTheme, background: color });
+      }
+      this.bodyEl.style.background = color;
+    }
+
+    if (typeof this.chart.invalidate === 'function') {
+      this.chart.invalidate(e => e.invalidateGlobal(3));
+    }
+  }
+
+  applyGrid(gridConfig) {
+    if (!this.chart) return;
+    const cfg = gridConfig || {};
+    if (typeof this.chart.setGridOptions === 'function') {
+      this.chart.setGridOptions({
+        vertLines: cfg.vertLines !== false,
+        vertColor: cfg.vertColor || '#1e222d',
+        vertStyle: cfg.vertStyle || 'solid',
+        horzLines: cfg.horzLines !== false,
+        horzColor: cfg.horzColor || '#1e222d',
+        horzStyle: cfg.horzStyle || 'solid'
+      });
+    }
+    if (typeof this.chart.invalidate === 'function') {
+      this.chart.invalidate(e => e.invalidateGlobal(3));
+    }
   }
 
   applySeriesStyle(type = this.chartType) {
@@ -1520,6 +1605,47 @@ export class MultiChartLayoutManager {
         } else {
           slot.applySeriesStyle(type);
         }
+      }
+    }
+  }
+
+  applyAllSlotsAppearance(config) {
+    if (!config) return;
+    if (this.store.chartController && typeof this.store.chartController.applyAppearance === 'function') {
+      this.store.chartController.applyAppearance(config);
+    }
+    for (const slot of this.slots.values()) {
+      slot.applyAppearance(config);
+    }
+  }
+
+  applyAllSlotsBackground(bgConfig) {
+    if (!bgConfig) return;
+    if (this.store.chartController && typeof this.store.chartController.applyBackground === 'function') {
+      this.store.chartController.applyBackground(bgConfig);
+    }
+    for (const slot of this.slots.values()) {
+      slot.applyBackground(bgConfig);
+    }
+  }
+
+  applyAllSlotsGrid(gridConfig) {
+    if (!gridConfig) return;
+    if (this.store.chartController && typeof this.store.chartController.applyGrid === 'function') {
+      this.store.chartController.applyGrid(gridConfig);
+    }
+    for (const slot of this.slots.values()) {
+      slot.applyGrid(gridConfig);
+    }
+  }
+
+  renderAllSessionBreaks() {
+    if (this.store.sessionBreaksOverlay && typeof this.store.sessionBreaksOverlay.render === 'function') {
+      this.store.sessionBreaksOverlay.render();
+    }
+    for (const slot of this.slots.values()) {
+      if (slot.sessionBreaksOverlay && typeof slot.sessionBreaksOverlay.render === 'function') {
+        slot.sessionBreaksOverlay.render();
       }
     }
   }
