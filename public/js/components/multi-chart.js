@@ -154,7 +154,14 @@ export class ChartSlot {
       wickUpColor: '#089981',
       wickDownColor: '#f23645',
       borderUpColor: '#089981',
-      borderDownColor: '#f23645'
+      borderDownColor: '#f23645',
+      lastPriceUp: '#089981',
+      lastPriceDown: '#f23645',
+      lastPriceText: '#ffffff',
+      buy: '#089981',
+      sell: '#f23645',
+      profit: '#089981',
+      loss: '#f23645'
     };
 
     this.chart = OpenAlgoCharts.createChart(this.bodyEl, {
@@ -842,7 +849,7 @@ export class ChartSlot {
       this.bodyEl.style.background = gradCss;
       if (this.slotEl) this.slotEl.style.background = gradCss;
       if (typeof this.chart.setTheme === 'function') {
-        this.chart.setTheme({ ...curTheme, background: 'transparent' });
+        this.chart.setTheme({ ...curTheme, lastPriceText: '#ffffff', background: 'transparent' });
       }
       this.bodyEl.style.background = gradCss;
     } else {
@@ -850,7 +857,7 @@ export class ChartSlot {
       this.bodyEl.style.background = color;
       if (this.slotEl) this.slotEl.style.background = color;
       if (typeof this.chart.setTheme === 'function') {
-        this.chart.setTheme({ ...curTheme, background: color });
+        this.chart.setTheme({ ...curTheme, lastPriceText: '#ffffff', background: color });
       }
       this.bodyEl.style.background = color;
     }

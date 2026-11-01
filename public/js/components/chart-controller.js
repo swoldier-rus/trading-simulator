@@ -1060,14 +1060,14 @@ export class ChartControllerComponent {
       const g2 = cfg.gradientColor2 || '#131722';
       this.chartEl.style.background = `linear-gradient(to bottom, ${g1}, ${g2})`;
       if (typeof this.chart.setTheme === 'function') {
-        this.chart.setTheme({ ...curTheme, background: 'transparent' });
+        this.chart.setTheme({ ...curTheme, lastPriceText: '#ffffff', background: 'transparent' });
       }
       this.chartEl.style.background = `linear-gradient(to bottom, ${g1}, ${g2})`;
     } else {
       const color = cfg.color || '#131722';
       this.chartEl.style.background = color;
       if (typeof this.chart.setTheme === 'function') {
-        this.chart.setTheme({ ...curTheme, background: color });
+        this.chart.setTheme({ ...curTheme, lastPriceText: '#ffffff', background: color });
       }
       this.chartEl.style.background = color;
     }
