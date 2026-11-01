@@ -35,6 +35,12 @@ export class ChartSlot {
     this.allCandles = [];
     this.currentVisibleCandles = [];
 
+    // Dirty-flag & Throttled Replay State
+    this._isReplayDirty = false;
+    this._pendingReplayState = null;
+    this._replayRafId = null;
+    this._lastReplayRenderTime = 0;
+
     this.createDom();
   }
 
@@ -693,6 +699,68 @@ export class ChartSlot {
     } catch (e) {}
   }
 
+  isSlotVisible() {
+    if (!this.slotEl || !this.bodyEl) return false;
+    if (this.slotEl.classList.contains('hidden') || this.slotEl.style.display === 'none') return false;
+    if (this.bodyEl.clientWidth === 0 || this.bodyEl.clientHeight === 0) return false;
+    if (this.manager && typeof this.manager.hasOtherSlotMaximized === 'function' && this.manager.hasOtherSlotMaximized(this.id)) {
+      return false;
+    }
+    return true;
+  }
+
+  queueReplayUpdate(simTime, currentTickPrice = null, isIncremental = false, isPlaying = false) {
+    const isActive = this.manager && this.manager.activeSlotId === this.id;
+
+    // Active slot or manual step/pause: always update synchronously for 60 FPS fluidity
+    if (isActive || !isPlaying) {
+      this._isReplayDirty = false;
+      this._pendingReplayState = null;
+      if (this._replayRafId) {
+        cancelAnimationFrame(this._replayRafId);
+        this._replayRafId = null;
+      }
+      this.syncToReplayTime(simTime, currentTickPrice, isIncremental);
+      return;
+    }
+
+    // Obscured / hidden slot: mark dirty without scheduling RAF to save CPU/GPU cycles
+    if (!this.isSlotVisible()) {
+      this._isReplayDirty = true;
+      this._pendingReplayState = { simTime, currentTickPrice, isIncremental };
+      return;
+    }
+
+    // Secondary visible slot during continuous replay: throttle canvas updates to ~30 FPS via dirty-flag + RAF
+    this._isReplayDirty = true;
+    this._pendingReplayState = { simTime, currentTickPrice, isIncremental };
+
+    if (!this._replayRafId) {
+      this._replayRafId = requestAnimationFrame((timestamp) => {
+        this._replayRafId = null;
+        if (timestamp - this._lastReplayRenderTime < 33) {
+          // Coalesce into next frame
+          return;
+        }
+        this._lastReplayRenderTime = timestamp;
+        this.flushPendingReplay();
+      });
+    }
+  }
+
+  flushPendingReplay() {
+    if (this._replayRafId) {
+      cancelAnimationFrame(this._replayRafId);
+      this._replayRafId = null;
+    }
+    if (this._isReplayDirty && this._pendingReplayState) {
+      const state = this._pendingReplayState;
+      this._isReplayDirty = false;
+      this._pendingReplayState = null;
+      this.syncToReplayTime(state.simTime, state.currentTickPrice, state.isIncremental);
+    }
+  }
+
   getCurrentBar() {
     if (this.currentVisibleCandles && this.currentVisibleCandles.length > 0) {
       return this.currentVisibleCandles[this.currentVisibleCandles.length - 1];
@@ -931,6 +999,9 @@ export class ChartSlot {
   toggleMaximize() {
     this.isMaximized = !this.isMaximized;
     this.slotEl.classList.toggle('maximized', this.isMaximized);
+    if (this.manager && typeof this.manager.flushAllSlotsReplay === 'function') {
+      this.manager.flushAllSlotsReplay();
+    }
     if (this.chart && this.bodyEl) {
       setTimeout(() => {
         this.chart.applySize(this.bodyEl.clientWidth, this.bodyEl.clientHeight);
@@ -939,6 +1010,10 @@ export class ChartSlot {
   }
 
   destroy() {
+    if (this._replayRafId) {
+      cancelAnimationFrame(this._replayRafId);
+      this._replayRafId = null;
+    }
     if (this.manager.linkGroup && this.chart) {
       try {
         this.manager.linkGroup.remove(this.chart);
@@ -1161,6 +1236,25 @@ export class MultiChartLayoutManager {
     return cur ? cur.time : null;
   }
 
+  hasOtherSlotMaximized(slotId) {
+    const slot0 = document.getElementById('chartSlot0');
+    if (slotId !== 0 && slot0 && slot0.classList.contains('maximized')) {
+      return true;
+    }
+    for (const [id, slot] of this.slots.entries()) {
+      if (id !== slotId && slot.isMaximized) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  flushAllSlotsReplay() {
+    for (const slot of this.slots.values()) {
+      slot.flushPendingReplay();
+    }
+  }
+
   syncAllSlotsToReplay(simTime, currentTickPrice = null, isIncremental = false) {
     if (!simTime) return;
 
@@ -1170,8 +1264,10 @@ export class MultiChartLayoutManager {
       slot0.classList.add('in-replay');
     }
 
+    const isPlaying = !!(this.store.simulator && this.store.simulator.isPlaying);
+
     for (const slot of this.slots.values()) {
-      slot.syncToReplayTime(simTime, currentTickPrice, isIncremental);
+      slot.queueReplayUpdate(simTime, currentTickPrice, isIncremental, isPlaying);
     }
   }
 
@@ -1328,6 +1424,7 @@ export class MultiChartLayoutManager {
 
     // MTF Replay Coordinator: toggle full data vs sliced data on replay state change
     eventBus.on('replay:state-change', (isActive) => {
+      this.flushAllSlotsReplay();
       if (isActive) {
         const simTime = this.getCurrentSimulationTime();
         if (simTime) {
@@ -1340,6 +1437,7 @@ export class MultiChartLayoutManager {
 
     // MTF Replay Coordinator: on slider scrub or jump
     eventBus.on('replay:scrubbed', () => {
+      this.flushAllSlotsReplay();
       if (this.isReplayActive()) {
         const simTime = this.getCurrentSimulationTime();
         if (simTime) {
@@ -1499,6 +1597,7 @@ export class MultiChartLayoutManager {
 
   setActiveSlot(slotId) {
     this.activeSlotId = slotId;
+    this.flushAllSlotsReplay();
 
     // Update active highlight classes
     const allSlotEls = this.wrapperEl.querySelectorAll('.chart-slot');
