@@ -251,10 +251,10 @@ export class ChartOrderMenuComponent {
           this.targetSymbol = symbol;
 
           const priceScaleWidth = 65;
-          const btnWidth = 22;
+          const btnWidth = 20;
           const axisDividerX = rect.right - priceScaleWidth;
           const btnLeft = axisDividerX - btnWidth - 3;
-          const btnTop = rect.top + localY - 11;
+          const btnTop = rect.top + localY - 10;
 
           if (this.priceAxisPlusBtn) {
             this.priceAxisPlusBtn.style.position = 'fixed';
