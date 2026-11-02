@@ -1,7 +1,7 @@
 // components/multi-chart.js - Multi-Chart Grid Layout & Slot Controller with MTF Replay, Sync Engine & Drawings Sync
 import { eventBus } from '../core/event-bus.js';
 import { marketDataService } from '../services/market-data.service.js';
-import { binarySearchCandleFloorIndex, timeframeToSeconds, showToast } from '../core/utils.js';
+import { binarySearchCandleFloorIndex, binarySearchCandleExact, timeframeToSeconds, showToast } from '../core/utils.js';
 import { TradeLinesOverlayComponent } from './trade-lines-overlay.js';
 import { TradeExecutionsOverlayComponent } from './trade-executions-overlay.js';
 import { SessionBreaksOverlayComponent } from './session-breaks-overlay.js';
@@ -30,6 +30,24 @@ export class ChartSlot {
     this.isMaximized = false;
     this.candlesCount = 0;
     this._isLoadingHistory = false;
+    this.legendEl = null;
+    this.legendSymbol = null;
+    this.legendTf = null;
+    this.legendCurrency = null;
+    this.valOpen = null;
+    this.valHigh = null;
+    this.valLow = null;
+    this.valClose = null;
+    this.valChange = null;
+    this.valVolume = null;
+    this.loaderEl = null;
+    this.loadingOverlayEl = null;
+    this._loadingCount = 0;
+    this._loaderShownTimestamp = 0;
+    this._hideLoaderTimeout = null;
+    this._lastLegendBar = null;
+    this._lastLegendClose = null;
+    this._lastLegendVol = null;
 
     // MTF Replay Data Caches
     this.allCandles = [];
@@ -51,10 +69,30 @@ export class ChartSlot {
     slot.setAttribute('data-slot-id', String(this.id));
 
     slot.innerHTML = `
+      <div class="chart-slot-legend" id="chartSlotLegend${this.id}">
+        <div class="legend-row">
+          <div class="legend-title">
+            <span class="legend-symbol" id="slotLegendSymbol${this.id}">${this.symbol}</span>
+            <span class="legend-tf" id="slotLegendTf${this.id}">${this.formatTfLabel(this.timeframe)}</span>
+            <span class="legend-currency" id="slotLegendCurrency${this.id}">RUB</span>
+          </div>
+          <div class="legend-values" id="slotLegendValues${this.id}">
+            <div class="legend-val-item"><span>О:</span><span id="slotValOpen${this.id}">—</span></div>
+            <div class="legend-val-item"><span>В:</span><span id="slotValHigh${this.id}">—</span></div>
+            <div class="legend-val-item"><span>Н:</span><span id="slotValLow${this.id}">—</span></div>
+            <div class="legend-val-item"><span>З:</span><span id="slotValClose${this.id}">—</span></div>
+            <div class="legend-val-item"><span id="slotValChange${this.id}">—</span></div>
+            <div class="legend-val-item"><span>Объем:</span><span id="slotValVolume${this.id}">—</span></div>
+          </div>
+          <div class="chart-data-loader" id="slotDataLoader${this.id}" style="display: none;" title="Загрузка котировок графика...">
+            <span class="loader-dot"></span>
+            <span class="loader-dot"></span>
+            <span class="loader-dot"></span>
+          </div>
+        </div>
+      </div>
       <div class="chart-slot-header">
         <div class="chart-slot-badge" title="Сменить таймфрейм для этого окна">
-          <span class="badge-symbol">${this.symbol}</span>
-          <span>•</span>
           <span class="badge-tf">${this.formatTfLabel(this.timeframe)}</span>
           <span class="badge-replay-tag">Replay</span>
           <div class="slot-tf-dropdown">
@@ -74,6 +112,7 @@ export class ChartSlot {
         </button>
       </div>
       <div class="chart-slot-body" id="chartSlotBody${this.id}"></div>
+      <div class="chart-slot-loading-overlay" id="slotLoadingOverlay${this.id}"></div>
       <div class="chart-session-breaks-overlay" id="chartSessionBreaksOverlay${this.id}">
         <svg class="chart-session-breaks-svg" id="chartSessionBreaksSvg${this.id}"></svg>
       </div>
@@ -89,6 +128,18 @@ export class ChartSlot {
     this.bodyEl = slot.querySelector(`#chartSlotBody${this.id}`);
     this.badgeEl = slot.querySelector('.chart-slot-badge');
     this.tfDropdownEl = slot.querySelector('.slot-tf-dropdown');
+    this.legendEl = slot.querySelector(`#chartSlotLegend${this.id}`);
+    this.legendSymbol = slot.querySelector(`#slotLegendSymbol${this.id}`);
+    this.legendTf = slot.querySelector(`#slotLegendTf${this.id}`);
+    this.legendCurrency = slot.querySelector(`#slotLegendCurrency${this.id}`);
+    this.valOpen = slot.querySelector(`#slotValOpen${this.id}`);
+    this.valHigh = slot.querySelector(`#slotValHigh${this.id}`);
+    this.valLow = slot.querySelector(`#slotValLow${this.id}`);
+    this.valClose = slot.querySelector(`#slotValClose${this.id}`);
+    this.valChange = slot.querySelector(`#slotValChange${this.id}`);
+    this.valVolume = slot.querySelector(`#slotValVolume${this.id}`);
+    this.loaderEl = slot.querySelector(`#slotDataLoader${this.id}`);
+    this.loadingOverlayEl = slot.querySelector(`#slotLoadingOverlay${this.id}`);
 
     // Click to focus slot (pointerdown capture phase for instant responsiveness)
     slot.addEventListener('pointerdown', () => {
@@ -293,6 +344,23 @@ export class ChartSlot {
       });
     }
 
+    // Crosshair move handler to update slot legend OHLCV
+    if (typeof this.chart.subscribeCrosshairMove === 'function') {
+      this.chart.subscribeCrosshairMove((param) => {
+        if (!param || !param.time) {
+          this.updateLegendToLatest();
+        } else {
+          const candles = this.manager.isReplayActive() ? this.currentVisibleCandles : this.allCandles;
+          if (candles && candles.length > 0) {
+            const bar = binarySearchCandleExact(candles, param.time);
+            if (bar) {
+              this.updateLegend(bar);
+            }
+          }
+        }
+      });
+    }
+
     // Allow clicking on secondary charts to choose Jump to Bar start point or activate slot
     this.chart.subscribeClick((param) => {
       this.manager.setActiveSlot(this.id);
@@ -336,6 +404,7 @@ export class ChartSlot {
           return;
         }
         const oldest = this.allCandles[0];
+        this.setLoadingState(true, { fullReset: false });
         try {
           const res = await marketDataService.getCandles(
             this.symbol,
@@ -363,12 +432,14 @@ export class ChartSlot {
                   });
                 }
               }
+              this.updateLegendToLatest();
             }
           }
         } catch (e) {
           console.warn(`[ChartSlot ${this.id}] History loader error:`, e);
         } finally {
           this.chart.historyLoadComplete();
+          this.setLoadingState(false);
         }
       });
     }
@@ -394,8 +465,10 @@ export class ChartSlot {
     }, 60);
   }
 
-  async loadData() {
+  async loadData(options = {}) {
     if (!this.mainSeries) return;
+    const isFullReset = options.fullReset !== false;
+    this.setLoadingState(true, { fullReset: isFullReset });
     try {
       let toSec = null;
       if (this.manager.isReplayActive()) {
@@ -429,9 +502,12 @@ export class ChartSlot {
           this.mainSeries.setData(this.allCandles);
           this.resetView();
         }
+        this.updateLegendToLatest();
       }
     } catch (err) {
       console.warn(`[ChartSlot ${this.id}] Failed to load candles:`, err);
+    } finally {
+      this.setLoadingState(false);
     }
   }
 
@@ -439,6 +515,7 @@ export class ChartSlot {
     if (this._isLoadingHistory || !targetTime || this._lastAttemptedTargetTime === targetTime) return;
     this._isLoadingHistory = true;
     this._lastAttemptedTargetTime = targetTime;
+    this.setLoadingState(true, { fullReset: false });
     try {
       const step = timeframeToSeconds(this.timeframe);
       const nowSec = Math.floor(Date.now() / 1000);
@@ -466,6 +543,7 @@ export class ChartSlot {
       console.warn(`[ChartSlot ${this.id}] ensureHistoryAround error:`, e);
     } finally {
       this._isLoadingHistory = false;
+      this.setLoadingState(false);
     }
   }
 
@@ -473,6 +551,7 @@ export class ChartSlot {
   async ensureHistoryBefore(targetTime) {
     if (this._isLoadingHistory || !this.allCandles || this.allCandles.length === 0) return;
     this._isLoadingHistory = true;
+    this.setLoadingState(true, { fullReset: false });
     try {
       let maxBatches = 5;
       while (maxBatches-- > 0 && this.allCandles.length > 0 && targetTime < this.allCandles[0].time) {
@@ -502,6 +581,7 @@ export class ChartSlot {
       console.warn(`[ChartSlot ${this.id}] ensureHistoryBefore error:`, e);
     } finally {
       this._isLoadingHistory = false;
+      this.setLoadingState(false);
     }
   }
 
@@ -682,6 +762,7 @@ export class ChartSlot {
     if (this.manager && this.manager.activeSlotId === this.id && this.store.quickTradeWidget) {
       this.store.quickTradeWidget.refreshToCurrentBar();
     }
+    this.updateLegendToLatest();
   }
 
   // Auto-scale price axis and scroll time scale to latest bar with TradingView 12-bar right offset
@@ -865,7 +946,7 @@ export class ChartSlot {
     this.figi = figi;
     this._lastAttemptedTargetTime = null;
     this.updateBadge();
-    this.loadData();
+    this.loadData({ fullReset: true });
     if (this.manager.drawingLinkGroup && this.chart) {
       this.manager.drawingLinkGroup.setContext(this.chart, { symbol: this.symbol, exchange: 'MOEX' });
     }
@@ -880,7 +961,7 @@ export class ChartSlot {
     this.timeframe = newTf;
     this._lastAttemptedTargetTime = null;
     this.updateBadge();
-    this.loadData();
+    this.loadData({ fullReset: true });
     if (this.manager.activeSlotId === this.id) {
       eventBus.emit('toolbar:sync_timeframe', newTf);
     }
@@ -975,19 +1056,107 @@ export class ChartSlot {
     }
   }
 
-  updateBadge() {
-    if (!this.badgeEl) return;
-    const symEl = this.badgeEl.querySelector('.badge-symbol');
-    const tfEl = this.badgeEl.querySelector('.badge-tf');
-    if (symEl) symEl.textContent = this.symbol;
-    if (tfEl) tfEl.textContent = this.formatTfLabel(this.timeframe);
+  setLoadingState(isLoading, options = {}) {
+    const fullReset = !!options.fullReset;
+    if (isLoading) {
+      this._loadingCount = (this._loadingCount || 0) + 1;
+      this._loaderShownTimestamp = Date.now();
+      if (this.loaderEl) {
+        this.loaderEl.style.display = 'inline-flex';
+      }
+      if (fullReset) {
+        if (this.loadingOverlayEl) {
+          this.loadingOverlayEl.classList.add('active');
+        }
+        if (this.valOpen) this.valOpen.textContent = '—';
+        if (this.valHigh) this.valHigh.textContent = '—';
+        if (this.valLow) this.valLow.textContent = '—';
+        if (this.valClose) this.valClose.textContent = '—';
+        if (this.valChange) {
+          this.valChange.textContent = '—';
+          this.valChange.className = '';
+        }
+        if (this.valVolume) this.valVolume.textContent = '—';
+      }
+    } else {
+      this._loadingCount = Math.max(0, (this._loadingCount || 1) - 1);
+      if (this._loadingCount === 0) {
+        const elapsed = Date.now() - (this._loaderShownTimestamp || 0);
+        const minDuration = 250;
+        const remaining = Math.max(0, minDuration - elapsed);
 
-    if (this.tfDropdownEl) {
-      this.tfDropdownEl.querySelectorAll('.slot-tf-item').forEach(item => {
-        const tf = item.getAttribute('data-tf');
-        item.classList.toggle('active', tf === this.timeframe);
-      });
+        if (this._hideLoaderTimeout) clearTimeout(this._hideLoaderTimeout);
+        this._hideLoaderTimeout = setTimeout(() => {
+          this._hideLoaderTimeout = null;
+          if (this.loaderEl) {
+            this.loaderEl.style.display = 'none';
+          }
+          if (this.loadingOverlayEl) {
+            this.loadingOverlayEl.classList.remove('active');
+          }
+        }, remaining);
+      }
     }
+  }
+
+  updateLegend(bar) {
+    if (!bar) return;
+    if (this._lastLegendBar === bar &&
+        this._lastLegendClose === bar.close &&
+        this._lastLegendVol === bar.volume) {
+      return;
+    }
+    this._lastLegendBar = bar;
+    this._lastLegendClose = bar.close;
+    this._lastLegendVol = bar.volume;
+
+    if (this.valOpen && typeof bar.open === 'number') this.valOpen.textContent = bar.open.toFixed(2);
+    if (this.valHigh && typeof bar.high === 'number') this.valHigh.textContent = bar.high.toFixed(2);
+    if (this.valLow && typeof bar.low === 'number') this.valLow.textContent = bar.low.toFixed(2);
+    if (this.valClose && typeof bar.close === 'number') this.valClose.textContent = bar.close.toFixed(2);
+
+    if (typeof bar.close === 'number' && typeof bar.open === 'number') {
+      const change = bar.close - bar.open;
+      const changePct = bar.open ? ((change / bar.open) * 100).toFixed(2) : '0.00';
+      if (this.valChange) {
+        this.valChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePct}%)`;
+        this.valChange.className = change >= 0 ? 'text-positive' : 'text-negative';
+      }
+    }
+
+    if (this.valVolume) {
+      this.valVolume.textContent = Number(bar.volume || 0).toLocaleString('ru-RU');
+    }
+  }
+
+  updateLegendToLatest() {
+    let current = null;
+    if (this.manager.isReplayActive()) {
+      if (this.currentVisibleCandles && this.currentVisibleCandles.length > 0) {
+        current = this.currentVisibleCandles[this.currentVisibleCandles.length - 1];
+      }
+    } else if (this.allCandles && this.allCandles.length > 0) {
+      current = this.allCandles[this.allCandles.length - 1];
+    }
+    if (current) this.updateLegend(current);
+  }
+
+  updateBadge() {
+    if (this.badgeEl) {
+      const tfEl = this.badgeEl.querySelector('.badge-tf');
+      if (tfEl) tfEl.textContent = this.formatTfLabel(this.timeframe);
+
+      if (this.tfDropdownEl) {
+        this.tfDropdownEl.querySelectorAll('.slot-tf-item').forEach(item => {
+          const tf = item.getAttribute('data-tf');
+          item.classList.toggle('active', tf === this.timeframe);
+        });
+      }
+    }
+
+    if (this.legendSymbol) this.legendSymbol.textContent = this.symbol;
+    if (this.legendTf) this.legendTf.textContent = this.formatTfLabel(this.timeframe);
+    if (this.legendCurrency) this.legendCurrency.textContent = 'RUB';
   }
 
   formatTfLabel(tf) {
