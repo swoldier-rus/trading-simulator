@@ -349,12 +349,19 @@ export class ChartSlot {
           if (res && res.candles && res.candles.length > 0) {
             const fresh = res.candles.filter(b => b.time < oldest.time);
             if (fresh.length > 0) {
+              const before = typeof this.chart.getVisibleLogicalRange === 'function' ? this.chart.getVisibleLogicalRange() : null;
               this.allCandles = [...fresh, ...this.allCandles];
               if (this.manager.isReplayActive()) {
                 this.syncToReplayTime(this.manager.getCurrentSimulationTime(), null, false);
               } else {
                 this.currentVisibleCandles = [...this.allCandles];
                 this.mainSeries.setData(this.allCandles);
+                if (before && typeof this.chart.setVisibleLogicalRange === 'function') {
+                  this.chart.setVisibleLogicalRange({
+                    from: before.from + fresh.length,
+                    to: before.to + fresh.length
+                  });
+                }
               }
             }
           }

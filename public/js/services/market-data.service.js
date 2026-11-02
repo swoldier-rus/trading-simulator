@@ -72,17 +72,36 @@ export class SharedBarCache {
     return entry;
   }
 
-  set(ticker, timeframe, data) {
+  set(ticker, timeframe, data, replace = false) {
     const key = this.getKey(ticker, timeframe);
-    if (this.cache.size >= this.maxEntries) {
+    const existing = this.cache.get(key);
+    const incomingCandles = data.candles || [];
+
+    let candles = incomingCandles;
+    if (!replace && existing && existing.candles && existing.candles.length > 0 && incomingCandles.length > 0) {
+      // Merge candles, deduplicate by timestamp, and sort ascending
+      const map = new Map();
+      for (const c of existing.candles) {
+        if (c && typeof c.time === 'number') map.set(c.time, c);
+      }
+      for (const c of incomingCandles) {
+        if (c && typeof c.time === 'number') map.set(c.time, c);
+      }
+      candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
+      if (candles.length > 10000) {
+        candles = candles.slice(-10000);
+      }
+    }
+
+    if (this.cache.size >= this.maxEntries && !this.cache.has(key)) {
       const oldestKey = this.cache.keys().next().value;
       this.cache.delete(oldestKey);
     }
-    const candles = data.candles || [];
+
     this.cache.set(key, {
       candles,
-      lot: data.lot || 10,
-      source: data.source || 'cache',
+      lot: data.lot || (existing ? existing.lot : 10),
+      source: data.source || (existing ? existing.source : 'cache'),
       minTime: candles.length > 0 ? candles[0].time : 0,
       maxTime: candles.length > 0 ? candles[candles.length - 1].time : 0,
       updatedAt: Date.now()
@@ -122,28 +141,37 @@ export class SharedBarCache {
           const latest = baseCandles[baseCandles.length - 1].time;
 
           // Check if base coverage is sufficient for requested window
+          if (to && earliest > to) continue;
           if (to && latest < to - targetSec * 3) continue;
           if (from && earliest > from + targetSec * 3) continue;
 
           const resampled = resampleOHLCV(baseCandles, targetSec);
-          if (resampled && resampled.length >= (from ? 1 : 10)) {
-            const visibleSlice = count ? resampled.slice(-count) : resampled;
-            const derivedResult = {
-              ok: true,
-              source: 'shared_memory_cache',
-              candles: visibleSlice,
-              lot: baseEntry.lot || 10,
-              fromCache: true,
-              derivedFrom: baseTf,
-              totalCached: resampled.length
-            };
-            // Cache the derived series in memory for subsequent instantaneous queries
-            this.set(ticker, targetTimeframe, {
-              candles: resampled,
-              lot: baseEntry.lot || 10,
-              source: 'shared_memory_cache'
-            });
-            return derivedResult;
+          if (resampled && resampled.length > 0) {
+            let matching = resampled;
+            if (to && from) matching = resampled.filter(c => c.time >= from && c.time <= to);
+            else if (to) matching = resampled.filter(c => c.time <= to);
+            else if (from) matching = resampled.filter(c => c.time >= from);
+
+            const minBars = Math.min(count || 300, 50);
+            if (matching.length >= minBars) {
+              const visibleSlice = count ? (to && !from ? matching.slice(-count) : (from && !to ? matching.slice(0, count) : matching.slice(-count))) : matching;
+              const derivedResult = {
+                ok: true,
+                source: 'shared_memory_cache',
+                candles: visibleSlice,
+                lot: baseEntry.lot || 10,
+                fromCache: true,
+                derivedFrom: baseTf,
+                totalCached: resampled.length
+              };
+              // Cache the derived series in memory for subsequent instantaneous queries
+              this.set(ticker, targetTimeframe, {
+                candles: resampled,
+                lot: baseEntry.lot || 10,
+                source: 'shared_memory_cache'
+              });
+              return derivedResult;
+            }
           }
         }
       }
@@ -158,24 +186,50 @@ class MarketDataService {
     this.sharedBarCache = new SharedBarCache(50);
   }
 
+  _extractCandleSlice(cached, count, to, from) {
+    if (!cached || cached.length === 0) return [];
+    let slice = cached;
+    if (to && from) {
+      slice = cached.filter(c => c.time >= from && c.time <= to);
+    } else if (to) {
+      slice = cached.filter(c => c.time <= to);
+    } else if (from) {
+      slice = cached.filter(c => c.time >= from);
+    }
+    if (!count) return slice;
+    if (to && !from) return slice.slice(-count);
+    if (from && !to) return slice.slice(0, count);
+    return slice.slice(-count);
+  }
+
   _isCandleSliceSufficient(cached, count, to, from) {
     if (!cached || cached.length === 0) return false;
-    const minBarsRequired = from ? 1 : 100;
-    if (cached.length < minBarsRequired) return false;
 
-    if (to) {
-      const latestCached = cached[cached.length - 1]?.time;
-      if (!latestCached || latestCached < to - 86400 * 3) {
-        return false;
-      }
+    // Case 1: Scrolling back in time (to is specified, from is null)
+    if (to && !from) {
+      const beforeTo = cached.filter(c => c.time <= to);
+      const minRequired = Math.min(count || 300, 50);
+      return beforeTo.length >= minRequired;
     }
-    if (from) {
+
+    // Case 2: Explicit date window (both from and to are specified)
+    if (from && to) {
       const earliestCached = cached[0]?.time;
-      if (!earliestCached || earliestCached > from + 86400 * 3) {
-        return false;
-      }
+      const latestCached = cached[cached.length - 1]?.time;
+      if (!earliestCached || !latestCached) return false;
+      return earliestCached <= from && latestCached >= to;
     }
-    return true;
+
+    // Case 3: From specified, to is null
+    if (from && !to) {
+      const afterFrom = cached.filter(c => c.time >= from);
+      const minRequired = Math.min(count || 300, 50);
+      return afterFrom.length >= minRequired;
+    }
+
+    // Case 4: Default latest bars
+    const minBarsRequired = Math.min(count || 1200, 100);
+    return cached.length >= minBarsRequired;
   }
 
   // Smart candle loader: serves from shared in-memory cache, then IndexedDB cache, otherwise network
@@ -188,7 +242,7 @@ class MarketDataService {
       const memEntry = this.sharedBarCache.get(ticker, timeframe);
       if (memEntry && memEntry.candles && memEntry.candles.length > 0) {
         if (this._isCandleSliceSufficient(memEntry.candles, count, to, from)) {
-          const visibleSlice = count ? memEntry.candles.slice(-count) : memEntry.candles;
+          const visibleSlice = this._extractCandleSlice(memEntry.candles, count, to, from);
           if (backgroundSync && !to && !from) {
             this.syncLatestInBackground(ticker, figi, timeframe, count);
           }
@@ -227,7 +281,7 @@ class MarketDataService {
 
         if (this._isCandleSliceSufficient(cached, count, to, from)) {
           const meta = await cacheService.getSeriesMeta(ticker, timeframe);
-          const visibleSlice = count ? cached.slice(-count) : cached;
+          const visibleSlice = this._extractCandleSlice(cached, count, to, from);
 
           // Populate shared in-memory cache with IndexedDB dataset
           this.sharedBarCache.set(ticker, timeframe, {

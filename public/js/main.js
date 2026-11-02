@@ -609,6 +609,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 8. Expose for testing and external controllers
   window.store = store;
+  window.marketDataService = marketDataService;
+  window.chartController = chartController;
   window._app = {
     chart: store.chart,
     mainSeries: store.mainSeries,

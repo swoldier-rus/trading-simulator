@@ -1,6 +1,7 @@
 // Suppress the standard Node security warning for NODE_TLS_REJECT_UNAUTHORIZED
+process.env.NODE_NO_WARNINGS = '1';
 process.on('warning', (warning) => {
-  if (warning.message && warning.message.includes('NODE_TLS_REJECT_UNAUTHORIZED')) {
+  if (warning.message && (warning.message.includes('NODE_TLS_REJECT_UNAUTHORIZED') || warning.message.includes('TLS'))) {
     return;
   }
   console.warn(warning);
