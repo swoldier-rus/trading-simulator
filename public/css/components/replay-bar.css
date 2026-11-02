@@ -197,26 +197,104 @@
   color: #ffffff;
 }
 
-.replay-start-point-btn {
+/* Replay Start Point Split Button Group (TradingView style) */
+.replay-start-point-group {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.replay-start-point-group .replay-start-point-btn {
   display: flex;
   align-items: center;
-  padding: 5px 9px;
-  border-radius: 4px;
+  gap: 5px;
+  height: 100%;
+  padding: 0 9px;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
   background-color: rgba(41, 98, 255, 0.15);
   border: 1px solid rgba(41, 98, 255, 0.3);
+  border-right: none;
   color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
 }
 
-.replay-start-point-btn:hover {
+.replay-start-point-group .replay-start-point-btn:hover {
   background-color: rgba(41, 98, 255, 0.3);
+  border-color: rgba(41, 98, 255, 0.5);
 }
 
-.replay-start-point-btn.active {
-  background-color: var(--tv-accent);
+.replay-start-point-group .replay-start-point-btn.active {
+  background-color: var(--tv-accent, #2962ff);
+  border-color: var(--tv-accent, #2962ff);
   color: #fff;
+}
+
+.replay-start-point-group .replay-start-point-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 6px;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background-color: rgba(41, 98, 255, 0.15);
+  border: 1px solid rgba(41, 98, 255, 0.3);
+  border-left: 1px solid rgba(41, 98, 255, 0.25);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.replay-start-point-group .replay-start-point-arrow:hover {
+  background-color: rgba(41, 98, 255, 0.3);
+  border-color: rgba(41, 98, 255, 0.5);
+}
+
+.replay-start-point-group.menu-open .replay-start-point-arrow {
+  background-color: rgba(41, 98, 255, 0.35);
+  border-color: var(--tv-accent, #2962ff);
+  color: #fff;
+}
+
+.start-point-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.start-point-btn-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.start-point-item.active {
+  background-color: rgba(41, 98, 255, 0.18) !important;
+}
+
+.start-point-item.active .start-point-text {
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+
+.start-point-item.active .start-point-icon {
+  color: var(--tv-accent, #2962ff) !important;
 }
 
 .replay-start-point-btn *,
+.replay-start-point-arrow *,
 .tv-btn *,
 .tv-btn-replay-dropdown * {
   pointer-events: none;

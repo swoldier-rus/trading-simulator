@@ -243,18 +243,24 @@
         <span class="replay-drag-dots">⠿</span>
       </div>
 
-      <!-- Jump to start point button -->
-      <button class="replay-control-btn replay-start-point-btn" id="btnReplayStartPoint" title="Выбрать начальную точку (Бар, Дата, Случайный)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="3" height="16" rx="0.5"></rect>
-          <line x1="21" y1="12" x2="9" y2="12"></line>
-          <polyline points="14 7 9 12 14 17"></polyline>
-        </svg>
-        <span style="font-size: 12px; margin-left: 4px; font-weight: 600;">Начало</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-left: 3px; opacity: 0.8;">
-          <path d="M7 10l5 5 5-5z"/>
-        </svg>
-      </button>
+      <!-- Jump to start point split button group (TradingView style) -->
+      <div class="replay-start-point-group" id="replayStartPointGroup">
+        <button type="button" class="replay-control-btn replay-start-point-btn" id="btnReplayStartPoint" title="Выбрать бар на графике">
+          <span class="start-point-btn-icon" id="startPointBtnIcon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="3" height="16" rx="0.5"></rect>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+              <polyline points="14 7 9 12 14 17"></polyline>
+            </svg>
+          </span>
+          <span class="start-point-btn-label" id="startPointBtnLabel">Выбрать бар</span>
+        </button>
+        <button type="button" class="replay-control-btn replay-start-point-arrow" id="btnReplayStartPointArrow" title="Выбрать начальную точку (Бар, Дата, Случайный)">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+      </div>
 
       <!-- Step back -->
       <button class="replay-control-btn" id="btnReplayStepBack" title="Предыдущий бар (Стрелка влево)">⏮</button>

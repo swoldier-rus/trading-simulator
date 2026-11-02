@@ -53,6 +53,11 @@ export class ReplayBarComponent {
     this.btnReplayStep = document.getElementById('btnReplayStep');
     this.btnReplayStepBack = document.getElementById('btnReplayStepBack');
     this.btnReplayStartPoint = document.getElementById('btnReplayStartPoint');
+    this.btnReplayStartPointArrow = document.getElementById('btnReplayStartPointArrow');
+    this.replayStartPointGroup = document.getElementById('replayStartPointGroup');
+    this.startPointBtnIcon = document.getElementById('startPointBtnIcon');
+    this.startPointBtnLabel = document.getElementById('startPointBtnLabel');
+    this.currentStartPointMode = 'bar';
     this.btnToggleIntraBar = document.getElementById('btnToggleIntraBar');
     this.replaySpeedSelect = document.getElementById('replaySpeedSelect');
     this.replayScrubSlider = document.getElementById('replayScrubSlider');
@@ -96,9 +101,13 @@ export class ReplayBarComponent {
     document.addEventListener('click', (e) => {
       if (this.startPointMenu &&
           !this.startPointMenu.contains(e.target) &&
-          !this.btnToggleReplayMenu.contains(e.target) &&
-          (!this.btnReplayStartPoint || !this.btnReplayStartPoint.contains(e.target))) {
+          (!this.btnToggleReplayMenu || !this.btnToggleReplayMenu.contains(e.target)) &&
+          (!this.btnReplayStartPoint || !this.btnReplayStartPoint.contains(e.target)) &&
+          (!this.btnReplayStartPointArrow || !this.btnReplayStartPointArrow.contains(e.target))) {
         this.startPointMenu.style.display = 'none';
+        if (this.replayStartPointGroup) {
+          this.replayStartPointGroup.classList.remove('menu-open');
+        }
       }
     });
 
@@ -229,51 +238,199 @@ export class ReplayBarComponent {
   }
 
   initStartPointMenu() {
+    this.startPointModes = {
+      bar: {
+        id: 'bar',
+        optId: 'optStartBar',
+        label: 'Выбрать бар',
+        title: 'Выбрать бар на графике (кликнуть свечу)',
+        iconSvg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="3" height="16" rx="0.5"></rect>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+          <polyline points="14 7 9 12 14 17"></polyline>
+        </svg>`
+      },
+      randomBar: {
+        id: 'randomBar',
+        optId: 'optStartRandomBar',
+        label: 'Случайный бар',
+        title: 'Случайный бар (слепой тест стратегии)',
+        iconSvg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="15" height="15" rx="3"></rect>
+          <circle cx="7" cy="9" r="1.2" fill="currentColor"></circle>
+          <circle cx="10.5" cy="12.5" r="1.2" fill="currentColor"></circle>
+          <circle cx="14" cy="16" r="1.2" fill="currentColor"></circle>
+        </svg>`
+      },
+      date: {
+        id: 'date',
+        optId: 'optStartDate',
+        label: 'К дате',
+        title: 'Перейти к дате и времени...',
+        iconSvg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+          <line x1="7" y1="2" x2="7" y2="5"></line>
+          <line x1="17" y1="2" x2="17" y2="5"></line>
+          <line x1="17" y1="13" x2="7" y2="13"></line>
+          <polyline points="11 9 7 13 11 17"></polyline>
+        </svg>`
+      },
+      firstDate: {
+        id: 'firstDate',
+        optId: 'optStartFirstDate',
+        label: 'Первая дата',
+        title: 'Первая доступная дата (начало истории)',
+        iconSvg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="4" cy="20" r="2"></circle>
+          <line x1="4" y1="18" x2="4" y2="4"></line>
+          <path d="M4 4h13l-2.5 5 2.5 5H4"></path>
+        </svg>`
+      }
+    };
+
+    // Main split button: directly executes currently active mode
     if (this.btnReplayStartPoint) {
       this.btnReplayStartPoint.onclick = (e) => {
         e.stopPropagation();
-        const rect = this.btnReplayStartPoint.getBoundingClientRect();
-        this.startPointMenu.style.top = `${rect.bottom + 6}px`;
-        this.startPointMenu.style.left = `${rect.left}px`;
-        this.startPointMenu.style.display = this.startPointMenu.style.display === 'none' ? 'block' : 'none';
+        this.closeStartPointMenu();
+        this.executeCurrentStartPointMode();
       };
     }
 
+    // Arrow button: toggles start point dropdown menu
+    if (this.btnReplayStartPointArrow) {
+      this.btnReplayStartPointArrow.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = this.startPointMenu && this.startPointMenu.style.display === 'block';
+        if (isOpen) {
+          this.closeStartPointMenu();
+        } else {
+          this.openStartPointMenu();
+        }
+      };
+    }
+
+    // Dropdown items
     if (this.optStartBar) {
       this.optStartBar.onclick = () => {
-        this.startPointMenu.style.display = 'none';
-        if (this.store.fsm) {
-          this.store.fsm.startJumpSelection();
-        } else {
-          this.store.set('isSelectingJumpBar', true);
-          eventBus.emit('tool:reset');
-          if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
-          if (this.btnReplayStartPoint) this.btnReplayStartPoint.classList.add('active');
-        }
-        showToast('Кликните на любую свечу на графике, чтобы начать симуляцию с этого момента', 'info');
+        this.closeStartPointMenu();
+        this.setStartPointMode('bar', true);
       };
     }
 
     if (this.optStartDate) {
       this.optStartDate.onclick = () => {
-        this.startPointMenu.style.display = 'none';
-        this.openDatePickerModal();
+        this.closeStartPointMenu();
+        this.setStartPointMode('date', true);
       };
     }
 
     if (this.optStartFirstDate) {
       this.optStartFirstDate.onclick = async () => {
-        this.startPointMenu.style.display = 'none';
-        await this.handleStartFirstDate();
+        this.closeStartPointMenu();
+        this.setStartPointMode('firstDate', true);
       };
     }
 
     if (this.optStartRandomBar) {
       this.optStartRandomBar.onclick = async () => {
-        this.startPointMenu.style.display = 'none';
-        await this.handleStartRandomBar();
+        this.closeStartPointMenu();
+        this.setStartPointMode('randomBar', true);
       };
     }
+
+    // Restore saved start point mode from localStorage
+    let savedMode = 'bar';
+    try {
+      savedMode = localStorage.getItem('replayStartPointMode') || 'bar';
+    } catch (e) {}
+    this.setStartPointMode(savedMode, false);
+  }
+
+  openStartPointMenu() {
+    if (!this.startPointMenu) return;
+    const anchor = this.replayStartPointGroup || this.btnReplayStartPointArrow || this.btnReplayStartPoint;
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      this.startPointMenu.style.top = `${rect.bottom + 6}px`;
+      this.startPointMenu.style.left = `${rect.left}px`;
+    }
+    this.startPointMenu.style.display = 'block';
+    if (this.replayStartPointGroup) {
+      this.replayStartPointGroup.classList.add('menu-open');
+    }
+  }
+
+  closeStartPointMenu() {
+    if (this.startPointMenu) {
+      this.startPointMenu.style.display = 'none';
+    }
+    if (this.replayStartPointGroup) {
+      this.replayStartPointGroup.classList.remove('menu-open');
+    }
+  }
+
+  setStartPointMode(modeKey, shouldExecute = false) {
+    if (!this.startPointModes || !this.startPointModes[modeKey]) {
+      modeKey = 'bar';
+    }
+    this.currentStartPointMode = modeKey;
+    try {
+      localStorage.setItem('replayStartPointMode', modeKey);
+    } catch (e) {}
+
+    const cfg = this.startPointModes[modeKey];
+    if (this.startPointBtnLabel) {
+      this.startPointBtnLabel.textContent = cfg.label;
+    }
+    if (this.startPointBtnIcon) {
+      this.startPointBtnIcon.innerHTML = cfg.iconSvg;
+    }
+    if (this.btnReplayStartPoint) {
+      this.btnReplayStartPoint.title = cfg.title;
+    }
+
+    // Highlight active item in menu
+    if (this.startPointMenu) {
+      this.startPointMenu.querySelectorAll('.start-point-item').forEach(item => {
+        item.classList.toggle('active', item.id === cfg.optId);
+      });
+    }
+
+    if (shouldExecute) {
+      this.executeCurrentStartPointMode();
+    }
+  }
+
+  async executeCurrentStartPointMode() {
+    const mode = this.currentStartPointMode || 'bar';
+    switch (mode) {
+      case 'randomBar':
+        await this.handleStartRandomBar();
+        break;
+      case 'date':
+        this.openDatePickerModal();
+        break;
+      case 'firstDate':
+        await this.handleStartFirstDate();
+        break;
+      case 'bar':
+      default:
+        this.executeStartBar();
+        break;
+    }
+  }
+
+  executeStartBar() {
+    if (this.store.fsm) {
+      this.store.fsm.startJumpSelection();
+    } else {
+      this.store.set('isSelectingJumpBar', true);
+      eventBus.emit('tool:reset');
+      if (this.chartEl) this.chartEl.style.cursor = 'crosshair';
+      if (this.btnReplayStartPoint) this.btnReplayStartPoint.classList.add('active');
+    }
+    showToast('Кликните на любую свечу на графике, чтобы начать симуляцию с этого момента', 'info');
   }
 
   initDatePickerModal() {
