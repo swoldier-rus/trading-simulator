@@ -1551,6 +1551,12 @@ export class MultiChartLayoutManager {
             }
           });
         });
+
+        document.addEventListener('click', (e) => {
+          if (dropdown0 && !badge0.contains(e.target)) {
+            dropdown0.classList.remove('show');
+          }
+        });
       }
 
       // Maximize button on slot 0
