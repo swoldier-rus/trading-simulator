@@ -571,6 +571,12 @@ export class ReplayBarComponent {
         }
         eventBus.emit('replay:scrubbed');
         const startBar = simulator.getCurrentBar();
+        const firstCandleTime = (simulator.allCandles && simulator.allCandles[0]?.time) || earliestSec;
+        eventBus.emit('chart:history_start_reached', firstCandleTime);
+        if (this.store.chartController && typeof this.store.chartController.hideDataError === 'function') {
+          this.store.chartController.hideDataError();
+        }
+
         const dateFormatted = startBar ? formatTimestamp(startBar.time) : formatTimestamp(earliestSec);
         if (this.store.sessionService) {
           this.store.sessionService.resetSession({ newTime: startBar?.time || earliestSec });

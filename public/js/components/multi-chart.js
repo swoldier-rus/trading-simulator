@@ -434,6 +434,12 @@ export class ChartSlot {
         const oldest = this.allCandles[0];
         this.setLoadingState(true, { fullReset: false });
         try {
+          const boundaries = await marketDataService.getBoundaries(this.symbol, this.figi, this.timeframe).catch(() => null);
+          const earliestTimeSec = (boundaries && boundaries.ok && typeof boundaries.earliestTimeSec === 'number')
+            ? boundaries.earliestTimeSec
+            : null;
+          const stepSec = (boundaries && boundaries.stepSec) ? boundaries.stepSec : 3600;
+
           const res = await marketDataService.getCandles(
             this.symbol,
             this.figi,
@@ -443,6 +449,10 @@ export class ChartSlot {
             null,
             { silent: true }
           );
+          const isAtHistoryStart = earliestTimeSec
+            ? (oldest.time <= earliestTimeSec + stepSec * 3)
+            : (res?.error && res.error.includes('Биржевые данные недоступны'));
+
           if (res && res.ok && res.candles && res.candles.length > 0) {
             this.hideDataError();
             const fresh = res.candles.filter(b => b.time < oldest.time);
@@ -463,6 +473,9 @@ export class ChartSlot {
               }
               this.updateLegendToLatest();
             }
+          } else if (isAtHistoryStart || (earliestTimeSec && oldest.time <= earliestTimeSec + stepSec * 3)) {
+            // Start of history reached on secondary chart
+            this.hideDataError();
           } else if (!res || res.ok === false) {
             this.showDataError(res?.error || 'Сбой сети при загрузке котировок');
           }

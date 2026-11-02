@@ -335,6 +335,9 @@ export class ChartControllerComponent {
           const stepSec = (boundaries && boundaries.stepSec) ? boundaries.stepSec : 3600;
 
           const data = await marketDataService.getCandles(symbol, figi, tf, 500, oldest - 1);
+          const isAtHistoryStart = earliestTimeSec
+            ? (oldest <= earliestTimeSec + stepSec * 3)
+            : (data?.error && data.error.includes('Биржевые данные недоступны'));
           if (data && data.ok && data.candles && data.candles.length > 0) {
             this.hideDataError();
             const before = this.chart.getVisibleLogicalRange();
@@ -350,11 +353,17 @@ export class ChartControllerComponent {
               }
             }
 
-            // Only trigger dinosaur marker if earliest available candle in history was reached
+            // Trigger dinosaur marker if earliest available candle in history was reached
             const currentOldest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
             if (earliestTimeSec && currentOldest && currentOldest <= (earliestTimeSec + stepSec * 3)) {
               eventBus.emit('chart:history_start_reached', currentOldest);
             }
+          } else if (isAtHistoryStart || (earliestTimeSec && oldest <= earliestTimeSec + stepSec * 3)) {
+            // Truly reached start of history!
+            // Even if server returned 404 "Биржевые данные недоступны", this is the EXPECTED boundary of history, NOT an error!
+            this.hideDataError();
+            const currentOldest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
+            eventBus.emit('chart:history_start_reached', currentOldest);
           } else if (!data || data.ok === false) {
             // An actual network/API error occurred -> show error indicator, do NOT show dinosaur!
             const errorMsg = data?.error || 'Сбой сети при загрузке котировок';
@@ -363,11 +372,9 @@ export class ChartControllerComponent {
             // Server returned 0 candles (empty array)
             const currentOldest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
             if (earliestTimeSec && currentOldest <= (earliestTimeSec + stepSec * 3)) {
-              // Truly reached the start of history
               this.hideDataError();
               eventBus.emit('chart:history_start_reached', currentOldest);
             } else {
-              // Gap or unexpected empty response before earliest date
               this.showDataError('Нет котировок за данный диапазон');
             }
           }
