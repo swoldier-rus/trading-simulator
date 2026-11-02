@@ -502,10 +502,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   eventBus.on('symbol:change', async ({ prevSymbol, ticker } = {}) => {
-    const badgeSym = document.getElementById('slotBadgeSymbol0');
-    if (badgeSym && ticker) {
-      badgeSym.textContent = ticker;
-    }
     // If symbol sync is disabled and the user is operating on a secondary slot, do not reload slot 0
     if (store.multiChart && !store.multiChart.syncSymbol && store.multiChart.activeSlotId > 0) {
       return;

@@ -20,6 +20,11 @@
   grid-template-rows: 1fr;
 }
 
+/* In 1x1 mode, hide Slot 0 header badge so canvas is clean and uncluttered */
+.chart-grid-wrapper.layout-1x1 #chartSlot0 .chart-slot-header {
+  display: none !important;
+}
+
 .chart-grid-wrapper.layout-1x2 {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;

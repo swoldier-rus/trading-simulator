@@ -527,11 +527,18 @@
         <div class="chart-grid-wrapper layout-1x1" id="chartGridWrapper">
           <div class="chart-slot active" id="chartSlot0" data-slot-id="0">
             <div class="chart-slot-header">
-              <div class="chart-slot-badge" id="slotBadge0" title="Текущий инструмент и таймфрейм">
-                <span class="badge-symbol" id="slotBadgeSymbol0">SBER</span>
-                <span>•</span>
+              <div class="chart-slot-badge" id="slotBadge0" title="Сменить таймфрейм для этого окна">
                 <span class="badge-tf" id="slotBadgeTf0">1ч</span>
                 <span class="badge-replay-tag">Replay</span>
+                <div class="slot-tf-dropdown" id="slotTfDropdown0">
+                  <div class="slot-tf-item" data-tf="1m">1м</div>
+                  <div class="slot-tf-item" data-tf="5m">5м</div>
+                  <div class="slot-tf-item" data-tf="15m">15м</div>
+                  <div class="slot-tf-item active" data-tf="1h">1ч</div>
+                  <div class="slot-tf-item" data-tf="4h">4ч</div>
+                  <div class="slot-tf-item" data-tf="1d">1Д</div>
+                  <div class="slot-tf-item" data-tf="1w">1Н</div>
+                </div>
               </div>
               <button class="chart-slot-btn btn-slot-maximize" title="Развернуть/восстановить окно">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

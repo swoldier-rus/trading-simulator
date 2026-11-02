@@ -1528,6 +1528,31 @@ export class MultiChartLayoutManager {
         this.setActiveSlot(0);
       });
 
+      // Timeframe dropdown for Slot 0 badge in multi-chart split mode
+      const badge0 = slot0.querySelector('#slotBadge0');
+      const dropdown0 = slot0.querySelector('#slotTfDropdown0');
+      if (badge0 && dropdown0) {
+        badge0.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.setActiveSlot(0);
+          dropdown0.classList.toggle('show');
+        });
+
+        dropdown0.querySelectorAll('.slot-tf-item').forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const newTf = item.getAttribute('data-tf');
+            dropdown0.classList.remove('show');
+            const activeTf = this.store.get('currentTimeframe');
+            if (newTf !== activeTf) {
+              this.store.set('currentTimeframe', newTf);
+              eventBus.emit('timeframe:change', { newTf, prevTf: activeTf });
+              eventBus.emit('toolbar:sync_timeframe', newTf);
+            }
+          });
+        });
+      }
+
       // Maximize button on slot 0
       const btnMax0 = slot0.querySelector('.btn-slot-maximize');
       if (btnMax0) {
@@ -1544,8 +1569,14 @@ export class MultiChartLayoutManager {
       }
     }
 
-    // When timeframe changes from top toolbar
+    // When timeframe changes from top toolbar or any slot
     eventBus.on('timeframe:change', ({ newTf }) => {
+      const dropdown0 = document.getElementById('slotTfDropdown0');
+      if (dropdown0 && newTf) {
+        dropdown0.querySelectorAll('.slot-tf-item').forEach(item => {
+          item.classList.toggle('active', item.getAttribute('data-tf') === newTf);
+        });
+      }
       if (this.activeSlotId > 0) {
         const slot = this.slots.get(this.activeSlotId);
         if (slot) {
