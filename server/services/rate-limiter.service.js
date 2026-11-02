@@ -72,10 +72,11 @@ class RateLimiterService {
         }
         return result;
       } catch (err) {
-        const isNetworkErr = err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.message.includes('fetch');
+        const detail = err.cause ? (err.cause.message || err.cause) : err.message;
+        const isNetworkErr = err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.name === 'TimeoutError' || err.message.includes('fetch');
         if (isNetworkErr && attempt < maxRetries) {
           const delay = baseDelayMs * Math.pow(2, attempt - 1);
-          console.warn(`[RateLimiter] Network error (${err.message}). Retrying in ${delay}ms...`);
+          console.warn(`[RateLimiter] Transient network issue (${detail}). Retrying attempt ${attempt + 1}/${maxRetries} in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }

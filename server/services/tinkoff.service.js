@@ -60,7 +60,8 @@ class TinkoffService {
   /**
    * Helper for authenticated POST requests to T-Bank Invest API
    */
-  async post(endpoint, token, payload) {
+  async post(endpoint, token, payload, options = {}) {
+    const timeoutMs = options.timeoutMs || 15000;
     return rateLimiter.executeWithRetry(async () => {
       const url = `${API_BASE}/${endpoint}`;
       const res = await fetch(url, {
@@ -70,7 +71,8 @@ class TinkoffService {
           'Content-Type': 'application/json',
           'x-app-name': 'tradingview-simulator'
         },
-        body: JSON.stringify(payload || {})
+        body: JSON.stringify(payload || {}),
+        signal: AbortSignal.timeout(timeoutMs)
       });
       return res;
     });
@@ -616,65 +618,69 @@ class TinkoffService {
         console.warn('[TinkoffService] GetLastPrices batch warning:', e.message);
       }
 
-      // 2. Fetch daily candles for changePercent calculation (last 7 days window)
+      // 2. Fetch daily candles for changePercent calculation in concurrent chunks of 5
       const now = new Date();
       const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+      const chunkSize = 5;
 
-      await Promise.all(validInstruments.map(async (inst) => {
-        let price = lastPricesMap.get(inst.figi) || 0;
-        let changePercent = 0;
+      for (let i = 0; i < validInstruments.length; i += chunkSize) {
+        const chunk = validInstruments.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(async (inst) => {
+          let price = lastPricesMap.get(inst.figi) || 0;
+          let changePercent = 0;
 
-        try {
-          const cRes = await this.post('tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles', token, {
-            figi: inst.figi,
-            from: weekAgo.toISOString(),
-            to: now.toISOString(),
-            interval: 'CANDLE_INTERVAL_DAY'
-          });
+          try {
+            const cRes = await this.post('tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles', token, {
+              figi: inst.figi,
+              from: weekAgo.toISOString(),
+              to: now.toISOString(),
+              interval: 'CANDLE_INTERVAL_DAY'
+            }, { timeoutMs: 8000 });
 
-          if (cRes.ok) {
-            const cData = await cRes.json();
-            const candles = cData.candles || [];
-            if (candles.length >= 2) {
-              const prevClose = quotationToNumber(candles[candles.length - 2].close);
-              const currClose = quotationToNumber(candles[candles.length - 1].close);
-              if (!price) price = currClose;
-              if (prevClose > 0) {
-                changePercent = +(((price - prevClose) / prevClose) * 100).toFixed(2);
-              }
-            } else if (candles.length === 1) {
-              const cOpen = quotationToNumber(candles[0].open);
-              const cClose = quotationToNumber(candles[0].close);
-              if (!price) price = cClose;
-              if (cOpen > 0) {
-                changePercent = +(((price - cOpen) / cOpen) * 100).toFixed(2);
+            if (cRes.ok) {
+              const cData = await cRes.json();
+              const candles = cData.candles || [];
+              if (candles.length >= 2) {
+                const prevClose = quotationToNumber(candles[candles.length - 2].close);
+                const currClose = quotationToNumber(candles[candles.length - 1].close);
+                if (!price) price = currClose;
+                if (prevClose > 0) {
+                  changePercent = +(((price - prevClose) / prevClose) * 100).toFixed(2);
+                }
+              } else if (candles.length === 1) {
+                const cOpen = quotationToNumber(candles[0].open);
+                const cClose = quotationToNumber(candles[0].close);
+                if (!price) price = cClose;
+                if (cOpen > 0) {
+                  changePercent = +(((price - cOpen) / cOpen) * 100).toFixed(2);
+                }
               }
             }
+          } catch (err) {
+            // Fallback if candle fetch fails
           }
-        } catch (err) {
-          // Fallback if candle fetch fails
-        }
 
-        const quote = {
-          ticker: inst.ticker,
-          name: inst.name,
-          figi: inst.figi,
-          type: inst.type || 'share',
-          classCode: inst.classCode || 'TQBR',
-          currency: inst.currency || 'RUB',
-          lot: inst.lot || 1,
-          minPriceIncrement: inst.minPriceIncrement || 0.01,
-          price,
-          changePercent
-        };
+          const quote = {
+            ticker: inst.ticker,
+            name: inst.name,
+            figi: inst.figi,
+            type: inst.type || 'share',
+            classCode: inst.classCode || 'TQBR',
+            currency: inst.currency || 'RUB',
+            lot: inst.lot || 1,
+            minPriceIncrement: inst.minPriceIncrement || 0.01,
+            price,
+            changePercent
+          };
 
-        this.quotesCache.set(inst.ticker, {
-          timestamp: Date.now(),
-          data: quote
-        });
+          this.quotesCache.set(inst.ticker, {
+            timestamp: Date.now(),
+            data: quote
+          });
 
-        result.push(quote);
-      }));
+          result.push(quote);
+        }));
+      }
 
       return result;
     } catch (err) {
