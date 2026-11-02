@@ -57,8 +57,11 @@ export class DrawingRailComponent {
     // Finish multi-point tools like Path on Enter key
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const dc = this.store.drawingController;
-        if (dc && typeof dc.finish === 'function' && dc.activeTool() === 'path') {
+        const activeSlot = this.store.multiChart?.activeSlotId > 0
+          ? this.store.multiChart.slots.get(this.store.multiChart.activeSlotId)
+          : null;
+        const dc = activeSlot?.drawingController || this.store.drawingController;
+        if (dc && typeof dc.finish === 'function' && (dc.activeTool() === 'path' || dc.activeTool() === 'polyline')) {
           dc.finish('enter');
         }
       }

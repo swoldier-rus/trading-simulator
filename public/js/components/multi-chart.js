@@ -275,6 +275,7 @@ export class ChartSlot {
           store.fsm.finishDrawing();
         }
         eventBus.emit('drawings:change');
+        eventBus.emit('tool:reset');
         return res;
       };
 
@@ -286,6 +287,15 @@ export class ChartSlot {
           });
         }
       });
+
+      // Reset toolbar button to cursor when drawing finishes on this secondary chart
+      if (typeof this.chart.on === 'function') {
+        this.chart.on('draw:tool', (data) => {
+          if (!data || !data.tool) {
+            eventBus.emit('tool:reset');
+          }
+        });
+      }
 
       // Register with DrawingLinkGroup for drawings cross-chart synchronization
       if (this.manager.drawingLinkGroup) {
