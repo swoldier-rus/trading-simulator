@@ -299,8 +299,21 @@ export class ChartControllerComponent {
         });
       }
 
-      // Infinite History Loader
+      // Error indicator element & retry handler
+      this.errorEl = document.getElementById('chartDataError');
+      if (this.errorEl) {
+        this.errorEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.retryHistoryLoad();
+        });
+      }
+
+      eventBus.on('symbol:change', () => this.hideDataError());
+      eventBus.on('timeframe:change', () => this.hideDataError());
+
+      // Infinite History Loader with accurate boundary checks and error reporting
       this.chart.setHistoryLoader(async () => {
+        this.hideDataError();
         eventBus.emit('chart:loading', true, { fullReset: false });
         try {
           const sim = this.store.simulator;
@@ -310,8 +323,20 @@ export class ChartControllerComponent {
             return;
           }
 
-          const data = await marketDataService.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), this.store.get('currentTimeframe'), 500, oldest - 1);
-          if (data && data.candles && data.candles.length > 0) {
+          const symbol = this.store.get('currentSymbol');
+          const figi = this.store.get('currentFigi');
+          const tf = this.store.get('currentTimeframe');
+
+          // Fetch instrument boundaries to verify true inception date
+          const boundaries = await marketDataService.getBoundaries(symbol, figi, tf).catch(() => null);
+          const earliestTimeSec = (boundaries && boundaries.ok && typeof boundaries.earliestTimeSec === 'number')
+            ? boundaries.earliestTimeSec
+            : null;
+          const stepSec = (boundaries && boundaries.stepSec) ? boundaries.stepSec : 3600;
+
+          const data = await marketDataService.getCandles(symbol, figi, tf, 500, oldest - 1);
+          if (data && data.ok && data.candles && data.candles.length > 0) {
+            this.hideDataError();
             const before = this.chart.getVisibleLogicalRange();
             const inserted = sim.prependHistory(data.candles);
 
@@ -323,17 +348,32 @@ export class ChartControllerComponent {
                   to: before.to + inserted
                 });
               }
-            } else {
-              // Prepend returned 0 new unique candles -> start of history reached
-              const earliest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
-              eventBus.emit('chart:history_start_reached', earliest);
             }
+
+            // Only trigger dinosaur marker if earliest available candle in history was reached
+            const currentOldest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
+            if (earliestTimeSec && currentOldest && currentOldest <= (earliestTimeSec + stepSec * 3)) {
+              eventBus.emit('chart:history_start_reached', currentOldest);
+            }
+          } else if (!data || data.ok === false) {
+            // An actual network/API error occurred -> show error indicator, do NOT show dinosaur!
+            const errorMsg = data?.error || 'Сбой сети при загрузке котировок';
+            this.showDataError(errorMsg);
           } else {
-            // Server/cache returned 0 candles -> start of history reached
-            eventBus.emit('chart:history_start_reached', oldest);
+            // Server returned 0 candles (empty array)
+            const currentOldest = sim && sim.allCandles ? sim.allCandles[0]?.time : oldest;
+            if (earliestTimeSec && currentOldest <= (earliestTimeSec + stepSec * 3)) {
+              // Truly reached the start of history
+              this.hideDataError();
+              eventBus.emit('chart:history_start_reached', currentOldest);
+            } else {
+              // Gap or unexpected empty response before earliest date
+              this.showDataError('Нет котировок за данный диапазон');
+            }
           }
         } catch (err) {
           console.error('History loader error:', err);
+          this.showDataError(err.message || 'Ошибка загрузки данных');
         } finally {
           this.chart.historyLoadComplete();
           eventBus.emit('chart:loading', false);
@@ -797,6 +837,30 @@ export class ChartControllerComponent {
    * Keep technical indicators legend stack positioned below the BUY/SELL quick trading widget,
    * exactly mirroring TradingView's on-chart hierarchy.
    */
+  showDataError(msg) {
+    if (!this.errorEl) this.errorEl = document.getElementById('chartDataError');
+    if (this.errorEl) {
+      this.errorEl.style.display = 'inline-flex';
+      this.errorEl.title = `${msg || 'Ошибка загрузки данных'}. Нажмите, чтобы повторить.`;
+    }
+  }
+
+  hideDataError() {
+    if (!this.errorEl) this.errorEl = document.getElementById('chartDataError');
+    if (this.errorEl) {
+      this.errorEl.style.display = 'none';
+    }
+  }
+
+  retryHistoryLoad() {
+    this.hideDataError();
+    if (this.chart && typeof this.chart._loadMoreHistory === 'function') {
+      this.chart._loadMoreHistory();
+    } else if (this.chart && this.chart._historyLoader) {
+      this.chart._historyLoader();
+    }
+  }
+
   syncIndicatorLegendOffset() {
     if (!this.chart || !this.chart._legendStack) return;
     const qtw = document.getElementById('chartQuickTradeWidget');

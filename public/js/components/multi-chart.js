@@ -89,6 +89,15 @@ export class ChartSlot {
             <span class="loader-dot"></span>
             <span class="loader-dot"></span>
           </div>
+          <!-- Interactive Historical Data Error Indicator -->
+          <div class="chart-data-error" id="slotDataError${this.id}" style="display: none;" role="button" tabindex="0" title="Ошибка загрузки данных. Нажмите, чтобы повторить.">
+            <svg class="error-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span class="error-label">Ошибка</span>
+          </div>
         </div>
       </div>
       <div class="chart-slot-header">
@@ -139,7 +148,15 @@ export class ChartSlot {
     this.valChange = slot.querySelector(`#slotValChange${this.id}`);
     this.valVolume = slot.querySelector(`#slotValVolume${this.id}`);
     this.loaderEl = slot.querySelector(`#slotDataLoader${this.id}`);
+    this.errorEl = slot.querySelector(`#slotDataError${this.id}`);
     this.loadingOverlayEl = slot.querySelector(`#slotLoadingOverlay${this.id}`);
+
+    if (this.errorEl) {
+      this.errorEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.retryHistoryLoad();
+      });
+    }
 
     // Click to focus slot (pointerdown capture phase for instant responsiveness)
     slot.addEventListener('pointerdown', () => {
@@ -409,6 +426,7 @@ export class ChartSlot {
     // History loader for backwards infinite scrolling on secondary charts
     if (typeof this.chart.setHistoryLoader === 'function') {
       this.chart.setHistoryLoader(async () => {
+        this.hideDataError();
         if (!this.allCandles || this.allCandles.length === 0) {
           this.chart.historyLoadComplete();
           return;
@@ -425,7 +443,8 @@ export class ChartSlot {
             null,
             { silent: true }
           );
-          if (res && res.candles && res.candles.length > 0) {
+          if (res && res.ok && res.candles && res.candles.length > 0) {
+            this.hideDataError();
             const fresh = res.candles.filter(b => b.time < oldest.time);
             if (fresh.length > 0) {
               const before = typeof this.chart.getVisibleLogicalRange === 'function' ? this.chart.getVisibleLogicalRange() : null;
@@ -444,9 +463,12 @@ export class ChartSlot {
               }
               this.updateLegendToLatest();
             }
+          } else if (!res || res.ok === false) {
+            this.showDataError(res?.error || 'Сбой сети при загрузке котировок');
           }
         } catch (e) {
           console.warn(`[ChartSlot ${this.id}] History loader error:`, e);
+          this.showDataError(e.message || 'Ошибка загрузки данных');
         } finally {
           this.chart.historyLoadComplete();
           this.setLoadingState(false);
@@ -1063,6 +1085,28 @@ export class ChartSlot {
       }
     } catch (e) {
       console.warn(`[ChartSlot ${this.id}] Failed to apply saved series style:`, e);
+    }
+  }
+
+  showDataError(msg) {
+    if (this.errorEl) {
+      this.errorEl.style.display = 'inline-flex';
+      this.errorEl.title = `${msg || 'Ошибка загрузки данных'}. Нажмите, чтобы повторить.`;
+    }
+  }
+
+  hideDataError() {
+    if (this.errorEl) {
+      this.errorEl.style.display = 'none';
+    }
+  }
+
+  retryHistoryLoad() {
+    this.hideDataError();
+    if (this.chart && typeof this.chart._loadMoreHistory === 'function') {
+      this.chart._loadMoreHistory();
+    } else if (this.chart && this.chart._historyLoader) {
+      this.chart._historyLoader();
     }
   }
 
