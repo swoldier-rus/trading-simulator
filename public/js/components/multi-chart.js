@@ -1822,7 +1822,7 @@ export class MultiChartLayoutManager {
     // Move Quick Trade Widget into active slot
     const targetSlotEl = slotId === 0
       ? (document.querySelector('#chartSlot0 .chart-legend') || document.getElementById('chartSlot0'))
-      : this.slots.get(slotId)?.slotEl;
+      : (this.slots.get(slotId)?.legendEl || this.slots.get(slotId)?.slotEl);
     const quickWidgetEl = document.getElementById('chartQuickTradeWidget');
     if (targetSlotEl && quickWidgetEl && quickWidgetEl.parentNode !== targetSlotEl) {
       targetSlotEl.appendChild(quickWidgetEl);

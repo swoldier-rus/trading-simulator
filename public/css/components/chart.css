@@ -184,10 +184,12 @@
   }
 }
 
-/* Inside Slot 0 legend: normal flex flow under OHLC bar */
-.chart-legend .chart-quick-trade-widget {
+/* Inside Slot 0 legend & secondary slot legends: normal flex flow under OHLC bar */
+.chart-legend .chart-quick-trade-widget,
+.chart-slot-legend .chart-quick-trade-widget {
   position: static;
   margin-top: 5px;
+  align-self: flex-start;
 }
 
 /* Direct child of #chartSlot0 fallback */
@@ -198,11 +200,11 @@
   z-index: 20;
 }
 
-/* Inside secondary chart slots (1x2, 2x1, 2x2): dock top-left */
-.chart-slot:not(#chartSlot0) .chart-quick-trade-widget {
+/* Fallback for secondary chart slots if legend is not attached */
+.chart-slot:not(#chartSlot0) > .chart-quick-trade-widget {
   position: absolute;
-  top: 10px;
-  left: 12px;
+  top: 44px;
+  left: 14px;
   z-index: 20;
 }
 
