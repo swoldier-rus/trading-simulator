@@ -152,6 +152,16 @@ class MarketSimulator {
     if (!newerBars || newerBars.length === 0) return 0;
 
     const latest = this.allCandles[this.allCandles.length - 1]?.time;
+    if (latest !== undefined) {
+      const oldestNewer = newerBars[0]?.time;
+      // Continuity safety check: ensure newerBars actually connects to existing history
+      // Reject stitching if there is an unbridgeable time gap (> 21 calendar days)
+      if (oldestNewer && (oldestNewer - latest > 21 * 86400)) {
+        console.warn(`[MarketSimulator] Discontinuous append rejected: gap between existing end (${latest}) and new bar (${oldestNewer}) is ${Math.round((oldestNewer - latest) / 86400)} days.`);
+        return 0;
+      }
+    }
+
     const fresh = latest !== undefined
       ? newerBars.filter(b => b.time > latest)
       : newerBars;
@@ -171,6 +181,16 @@ class MarketSimulator {
     if (!olderBars || olderBars.length === 0) return 0;
 
     const oldest = this.allCandles[0]?.time;
+    if (oldest !== undefined) {
+      const latestOlder = olderBars[olderBars.length - 1]?.time;
+      // Continuity safety check: ensure olderBars actually connects to existing history
+      // Reject stitching if there is an unbridgeable time gap (> 21 calendar days)
+      if (latestOlder && (oldest - latestOlder > 21 * 86400)) {
+        console.warn(`[MarketSimulator] Discontinuous prepend rejected: gap between older bar (${latestOlder}) and existing start (${oldest}) is ${Math.round((oldest - latestOlder) / 86400)} days.`);
+        return 0;
+      }
+    }
+
     const fresh = oldest !== undefined
       ? olderBars.filter(b => b.time < oldest)
       : olderBars;

@@ -456,7 +456,9 @@ export class ChartSlot {
           if (res && res.ok && res.candles && res.candles.length > 0) {
             this.hideDataError();
             const fresh = res.candles.filter(b => b.time < oldest.time);
-            if (fresh.length > 0) {
+            const latestFresh = fresh.length > 0 ? fresh[fresh.length - 1].time : 0;
+            const maxAllowedGap = Math.max(stepSec * 5, 21 * 86400);
+            if (fresh.length > 0 && (oldest.time - latestFresh <= maxAllowedGap)) {
               const before = typeof this.chart.getVisibleLogicalRange === 'function' ? this.chart.getVisibleLogicalRange() : null;
               this.allCandles = [...fresh, ...this.allCandles];
               if (this.manager.isReplayActive()) {
@@ -613,6 +615,8 @@ export class ChartSlot {
         if (res && res.candles && res.candles.length > 0) {
           const fresh = res.candles.filter(b => b.time < oldest.time);
           if (fresh.length === 0) break;
+          const latestFresh = fresh[fresh.length - 1].time;
+          if (oldest.time - latestFresh > 21 * 86400) break;
           this.allCandles = [...fresh, ...this.allCandles];
         } else {
           break;

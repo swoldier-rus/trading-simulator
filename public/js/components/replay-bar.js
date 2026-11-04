@@ -558,8 +558,16 @@ export class ReplayBarComponent {
       const forwardSec = getCalendarSecondsForBars(tf, 1000);
       const toSec = earliestSec + forwardSec;
 
-      // Always fetch directly from network to bypass cached recent bars
-      const data = await marketDataService.getCandles(symbol, figi, tf, 1000, toSec, earliestSec, { forceNetwork: true });
+      // Clear shared in-memory cache for this symbol and timeframe to isolate new inception dataset
+      if (marketDataService.sharedBarCache) {
+        marketDataService.sharedBarCache.clear(symbol, tf);
+      }
+
+      // Always fetch directly from network to bypass cached recent bars and cleanly replace cache
+      const data = await marketDataService.getCandles(symbol, figi, tf, 1000, toSec, earliestSec, {
+        forceNetwork: true,
+        replaceCache: true
+      });
       if (data && data.candles && data.candles.length > 0) {
         simulator.loadData(data.candles);
         // Start from the very beginning of the series (minimal pre-roll: 5 bars or first bar)
@@ -627,8 +635,16 @@ export class ReplayBarComponent {
       const fromSec = Math.max(earliestSec, snappedRandomSec - preRollSec);
       const toSec = Math.min(nowSec, snappedRandomSec + forwardSec);
 
-      // Always fetch full historical block with forceNetwork: true
-      const data = await marketDataService.getCandles(symbol, figi, tf, 600, toSec, fromSec, { forceNetwork: true });
+      // Clear shared in-memory cache for this symbol and timeframe so previous random dates do not linger
+      if (marketDataService.sharedBarCache) {
+        marketDataService.sharedBarCache.clear(symbol, tf);
+      }
+
+      // Always fetch full historical block with forceNetwork: true and replaceCache: true
+      const data = await marketDataService.getCandles(symbol, figi, tf, 600, toSec, fromSec, {
+        forceNetwork: true,
+        replaceCache: true
+      });
       if (data && data.candles && data.candles.length > 0) {
         simulator.loadData(data.candles);
         simulator.jumpToBar(snappedRandomSec);
@@ -699,8 +715,21 @@ export class ReplayBarComponent {
     const step = timeframeToSeconds(tf);
     const toSec = targetSec + Math.max(350 * step, 7 * 86400);
 
+    // Clear shared in-memory cache so target date is isolated
+    if (marketDataService.sharedBarCache) {
+      marketDataService.sharedBarCache.clear(this.store.get('currentSymbol'), tf);
+    }
+
     try {
-      const data = await marketDataService.getCandles(this.store.get('currentSymbol'), this.store.get('currentFigi'), tf, 1000, toSec);
+      const data = await marketDataService.getCandles(
+        this.store.get('currentSymbol'),
+        this.store.get('currentFigi'),
+        tf,
+        1000,
+        toSec,
+        null,
+        { forceNetwork: true, replaceCache: true }
+      );
       if (data && data.candles && data.candles.length > 0) {
         const newEarliest = data.candles[0].time;
         const newLatest = data.candles[data.candles.length - 1].time;

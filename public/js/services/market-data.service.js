@@ -79,17 +79,34 @@ export class SharedBarCache {
 
     let candles = incomingCandles;
     if (!replace && existing && existing.candles && existing.candles.length > 0 && incomingCandles.length > 0) {
-      // Merge candles, deduplicate by timestamp, and sort ascending
-      const map = new Map();
-      for (const c of existing.candles) {
-        if (c && typeof c.time === 'number') map.set(c.time, c);
-      }
-      for (const c of incomingCandles) {
-        if (c && typeof c.time === 'number') map.set(c.time, c);
-      }
-      candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
-      if (candles.length > 10000) {
-        candles = candles.slice(-10000);
+      const existingEarliest = existing.candles[0].time;
+      const existingLatest = existing.candles[existing.candles.length - 1].time;
+      const incomingEarliest = incomingCandles[0].time;
+      const incomingLatest = incomingCandles[incomingCandles.length - 1].time;
+
+      // Allow merge only if incoming candles overlap or directly connect to existing series
+      // (gap between existing and incoming must not exceed 21 days)
+      const maxAllowedGap = 21 * 86400;
+      const overlapsOrConnects = (
+        (incomingLatest >= existingEarliest - maxAllowedGap && incomingEarliest <= existingLatest + maxAllowedGap)
+      );
+
+      if (overlapsOrConnects) {
+        // Merge candles, deduplicate by timestamp, and sort ascending
+        const map = new Map();
+        for (const c of existing.candles) {
+          if (c && typeof c.time === 'number') map.set(c.time, c);
+        }
+        for (const c of incomingCandles) {
+          if (c && typeof c.time === 'number') map.set(c.time, c);
+        }
+        candles = Array.from(map.values()).sort((a, b) => a.time - b.time);
+        if (candles.length > 10000) {
+          candles = candles.slice(-10000);
+        }
+      } else {
+        // Disjoint non-overlapping historical eras (e.g. random bar jump): replace entirely to prevent stitching
+        candles = incomingCandles;
       }
     }
 
@@ -202,14 +219,25 @@ class MarketDataService {
     return slice.slice(-count);
   }
 
-  _isCandleSliceSufficient(cached, count, to, from) {
+  _isCandleSliceSufficient(cached, count, to, from, stepSec = 3600) {
     if (!cached || cached.length === 0) return false;
+
+    // Maximum allowed time gap between consecutive trading bars (e.g. weekends, 10-day New Year holiday)
+    const maxAllowedGap = Math.max(stepSec * 5, 21 * 86400);
 
     // Case 1: Scrolling back in time (to is specified, from is null)
     if (to && !from) {
       const beforeTo = cached.filter(c => c.time <= to);
       const minRequired = Math.min(count || 300, 50);
-      return beforeTo.length >= minRequired;
+      if (beforeTo.length < minRequired) return false;
+
+      // Continuity check: the latest bar in beforeTo must connect directly to 'to'
+      // If the cached island ends weeks/years before 'to', it is discontinuous and cannot be served!
+      const latestBeforeTo = beforeTo[beforeTo.length - 1];
+      if (to - latestBeforeTo.time > maxAllowedGap) {
+        return false;
+      }
+      return true;
     }
 
     // Case 2: Explicit date window (both from and to are specified)
@@ -220,11 +248,18 @@ class MarketDataService {
       return earliestCached <= from && latestCached >= to;
     }
 
-    // Case 3: From specified, to is null
+    // Case 3: From specified, to is null (paging forward)
     if (from && !to) {
       const afterFrom = cached.filter(c => c.time >= from);
       const minRequired = Math.min(count || 300, 50);
-      return afterFrom.length >= minRequired;
+      if (afterFrom.length < minRequired) return false;
+
+      // Continuity check: earliest bar in afterFrom must connect directly to 'from'
+      const earliestAfterFrom = afterFrom[0];
+      if (earliestAfterFrom.time - from > maxAllowedGap) {
+        return false;
+      }
+      return true;
     }
 
     // Case 4: Default latest bars
@@ -234,14 +269,15 @@ class MarketDataService {
 
   // Smart candle loader: serves from shared in-memory cache, then IndexedDB cache, otherwise network
   async getCandles(ticker, figi, timeframe, count = 1200, to = null, from = null, options = {}) {
-    const { forceNetwork = false, backgroundSync = true, lastClose = null } = options;
+    const { forceNetwork = false, backgroundSync = true, lastClose = null, replaceCache = false } = options;
     const cacheKey = `${(ticker || '').toUpperCase()}_${(timeframe || '').toLowerCase()}`;
+    const stepSec = timeframeToSeconds(timeframe) || 3600;
 
     // 1. Try reading from shared in-memory bar cache first (0ms latency, zero I/O)
     if (!forceNetwork) {
       const memEntry = this.sharedBarCache.get(ticker, timeframe);
       if (memEntry && memEntry.candles && memEntry.candles.length > 0) {
-        if (this._isCandleSliceSufficient(memEntry.candles, count, to, from)) {
+        if (this._isCandleSliceSufficient(memEntry.candles, count, to, from, stepSec)) {
           const visibleSlice = this._extractCandleSlice(memEntry.candles, count, to, from);
           if (backgroundSync && !to && !from) {
             this.syncLatestInBackground(ticker, figi, timeframe, count);
@@ -279,7 +315,7 @@ class MarketDataService {
           cached = await cacheService.getCachedCandles(ticker, timeframe);
         }
 
-        if (this._isCandleSliceSufficient(cached, count, to, from)) {
+        if (this._isCandleSliceSufficient(cached, count, to, from, stepSec)) {
           const meta = await cacheService.getSeriesMeta(ticker, timeframe);
           const visibleSlice = this._extractCandleSlice(cached, count, to, from);
 
@@ -323,12 +359,12 @@ class MarketDataService {
         const data = await API.getCandles(ticker, figi, timeframe, count, to, from, lastClose);
 
         if (data && data.candles && data.candles.length > 0) {
-          // Populate shared in-memory cache
+          // Populate shared in-memory cache (with replace option if specified)
           this.sharedBarCache.set(ticker, timeframe, {
             candles: data.candles,
             lot: data.lot || 10,
             source: 'network'
-          });
+          }, replaceCache);
 
           // Asynchronously persist fetched candles into IndexedDB
           cacheService.saveCandles(ticker, timeframe, data.candles, {
